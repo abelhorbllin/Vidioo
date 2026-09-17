@@ -8,14 +8,22 @@ interface EditSummaryProps {
 export function EditSummary({ summary }: EditSummaryProps) {
   const style = getEditingStyle(summary.styleId);
 
-  const rows: { label: string; value: string }[] = [
+  const rows: { label: string; value: string }[] = [];
+  if (summary.player) rows.push({ label: "Player", value: summary.player });
+  rows.push(
+    { label: "Style", value: style ? `${style.emoji} ${style.label}` : "Custom" },
     { label: "Duration", value: `${Math.round(summary.durationSeconds)}s` },
     { label: "Format", value: summary.aspectRatio },
+    { label: "Clips", value: summary.clipCount !== undefined ? String(summary.clipCount) : "—" },
     { label: "Cuts", value: String(summary.cutCount) },
+  );
+  if (summary.effectsCount !== undefined) {
+    rows.push({ label: "Effects", value: String(summary.effectsCount) });
+  }
+  rows.push(
     { label: "Captions", value: summary.captionsEnabled ? "Enabled" : "Disabled" },
     { label: "Silence removal", value: summary.silenceRemovalEnabled ? "Enabled" : "Disabled" },
-    { label: "Style", value: style ? `${style.emoji} ${style.label}` : "Custom" },
-  ];
+  );
 
   return (
     <div className="card p-6">

@@ -1,5 +1,5 @@
 import { getAIProvider } from "@/lib/ai/provider";
-import type { VideoInput } from "@/lib/ai/types";
+import type { BindableClip, VideoInput } from "@/lib/ai/types";
 import type { EditInstructions, EditPlan, VideoAnalysis } from "@/types/edit";
 
 /**
@@ -27,4 +27,16 @@ export async function modifyEditPlan(currentPlan: EditPlan, instruction: string)
   const provider = getAIProvider();
   const plan = await provider.modifyEditPlan(currentPlan, instruction);
   return { ...plan, source: provider.isMock ? "mock" : "ai" };
+}
+
+export async function generateDraftEditPlan(instructions: EditInstructions): Promise<EditPlan> {
+  const provider = getAIProvider();
+  const plan = await provider.generateDraftEditPlan(instructions);
+  return { ...plan, source: provider.isMock ? "mock" : "ai" };
+}
+
+export async function bindDraftPlan(plan: EditPlan, clips: BindableClip[]): Promise<EditPlan> {
+  const provider = getAIProvider();
+  const bound = await provider.bindDraftPlan(plan, clips);
+  return { ...bound, source: provider.isMock ? "mock" : "ai" };
 }

@@ -10,11 +10,19 @@ const CAPTION_STYLES = new Set(["off", "basic", "dynamic"]);
 const INTENSITIES = new Set(["low", "medium", "high"]);
 const MUSIC_CHOICES = new Set(["original", "add_later"]);
 const CLIP_TYPES = new Set(["highlight", "intro", "outro", "transition"]);
+const EFFECT_TYPES = new Set(["shake", "flash", "velocity", "colorGrade"]);
+const PLAN_STATUSES = new Set(["draft", "ready"]);
 
 /**
  * Validates a generated (or user-modified) EditPlan before it is allowed to
  * drive the rendering pipeline. This is a hard boundary: nothing produced
  * by the AI layer (mock or real) should reach lib/video/render.ts unchecked.
+ *
+ * A "draft" plan (see EditPlan["status"]) is validated more loosely: its
+ * clips are abstract slots with no real footage bound yet, so start/end
+ * timing isn't checked - only "ready" plans (which is all lib/video/render.ts
+ * ever accepts) get the full, strict checks that existed before football
+ * multi-clip support was added.
  */
 export function validateEditPlan(plan: unknown): ValidationResult {
   const errors: string[] = [];
@@ -24,6 +32,7 @@ export function validateEditPlan(plan: unknown): ValidationResult {
   }
 
   const p = plan as Partial<EditPlan>;
+  const isDraft = p.status === "draft";
 
   if (typeof p.duration !== "number" || !isFinite(p.duration) || p.duration <= 0) {
     errors.push("duration must be a positive number.");
@@ -37,13 +46,14 @@ export function validateEditPlan(plan: unknown): ValidationResult {
     errors.push("clips must be a non-empty array.");
   } else {
     p.clips.forEach((clip, i) => {
+      if (!CLIP_TYPES.has(clip.type)) errors.push(`clips[${i}]: invalid clip type "${clip.type}".`);
+      if (isDraft) return; // Abstract slot - start/end aren't meaningful yet.
       if (typeof clip.start !== "number" || typeof clip.end !== "number") {
         errors.push(`clips[${i}]: start/end must be numbers.`);
         return;
       }
       if (clip.start < 0) errors.push(`clips[${i}]: start must be >= 0.`);
       if (clip.end <= clip.start) errors.push(`clips[${i}]: end must be greater than start.`);
-      if (!CLIP_TYPES.has(clip.type)) errors.push(`clips[${i}]: invalid clip type "${clip.type}".`);
     });
   }
 
@@ -99,6 +109,34 @@ export function validateEditPlan(plan: unknown): ValidationResult {
 
   if (p.source !== "mock" && p.source !== "ai") {
     errors.push('source must be "mock" or "ai".');
+  }
+
+  if (typeof p.status !== "string" || !PLAN_STATUSES.has(p.status)) {
+    errors.push('status must be "draft" or "ready".');
+  }
+
+  if (p.player !== undefined && typeof p.player !== "string") {
+    errors.push("player must be a string when present.");
+  }
+
+  if (!Array.isArray(p.effects)) {
+    errors.push("effects must be an array.");
+  } else {
+    p.effects.forEach((effect, i) => {
+      if (!EFFECT_TYPES.has(effect.type)) {
+        errors.push(`effects[${i}]: invalid effect type "${effect.type}".`);
+      }
+      if (typeof effect.intensity !== "number" || effect.intensity < 0 || effect.intensity > 1) {
+        errors.push(`effects[${i}]: intensity must be a number between 0 and 1.`);
+      }
+      if (!isDraft && effect.start !== undefined && effect.end !== undefined && effect.end <= effect.start) {
+        errors.push(`effects[${i}]: end must be greater than start.`);
+      }
+    });
+  }
+
+  if (!Array.isArray(p.unsupportedRequests)) {
+    errors.push("unsupportedRequests must be an array.");
   }
 
   return { valid: errors.length === 0, errors };

@@ -5,28 +5,28 @@ import { EDITING_STYLES } from "@/lib/styles/editingStyles";
 const HOW_IT_WORKS = [
   {
     step: "01",
-    title: "Upload your footage",
-    description: "Drop in raw video from your camera, phone, or screen recorder. MP4, MOV, or WEBM.",
+    title: "Describe the edit",
+    description: "\"A 15 second dark Mbappé edit with fast cuts, velocity, and a strong effect on the goal.\"",
   },
   {
     step: "02",
-    title: "Describe the edit",
-    description: "Tell EditAI what you want in plain language, or pick a ready-made style.",
+    title: "Upload your clips",
+    description: "The AI plans the edit around your idea - you provide the footage. MP4, MOV, or WEBM.",
   },
   {
     step: "03",
     title: "Get your edit",
-    description: "The pipeline analyzes, cuts, captions, and renders — then you preview and export.",
+    description: "The pipeline cuts, effects, captions, and renders — then you preview and export.",
   },
 ];
 
 const CAPABILITIES = [
-  { title: "Smart cutting", description: "Finds and keeps the moments that matter, trims the rest." },
+  { title: "Smart cutting", description: "Builds a hook → skill → goal → celebration arc from your clips." },
   { title: "Silence removal", description: "Detects and removes dead air using real audio analysis." },
   { title: "Auto captions", description: "Burns in readable captions, basic or bold and dynamic." },
-  { title: "Auto zoom", description: "Punches in on key moments to add energy without editing by hand." },
+  { title: "Zoom, shake & flash", description: "Real crop-zoom, camera shake, and flash-hit effects on key moments." },
   { title: "Aspect ratio", description: "Reframes your footage for 9:16, 16:9, or 1:1 in one click." },
-  { title: "Chat to refine", description: "Ask for changes in plain English and watch the plan update." },
+  { title: "Chat to refine", description: "\"Make the goal hit harder\" or \"add more velocity\" - in plain English." },
 ];
 
 export default function LandingPage() {
@@ -41,18 +41,18 @@ export default function LandingPage() {
           Now in early access
         </div>
         <h1 className="animate-slide-up text-5xl font-semibold tracking-tight text-white sm:text-7xl">
-          Your video.
+          Create football edits
           <br />
           <span className="bg-gradient-to-r from-accent to-fuchsia-400 bg-clip-text text-transparent">
-            AI edited.
+            with AI.
           </span>
         </h1>
         <p className="mx-auto mt-6 max-w-xl text-lg text-zinc-400">
-          Turn raw footage into scroll-stopping edits with AI.
+          Describe your edit. Upload your clips. Let AI build it.
         </p>
         <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
           <Link href="/app" className="btn-primary">
-            Create an edit
+            Create my edit
           </Link>
           <a href="#how-it-works" className="btn-secondary">
             See how it works
@@ -65,10 +65,11 @@ export default function LandingPage() {
             <div className="col-span-1 flex flex-col gap-2 rounded-xl bg-base-900 p-4 text-left">
               <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">Prompt</span>
               <p className="text-sm text-zinc-200">
-                &ldquo;Fast-paced TikTok edit, remove silences, add captions, zoom on highlights.&rdquo;
+                &ldquo;15 second dark Mbappé edit, fast cuts, velocity, zoom on his skills, strong effect on the
+                goal.&rdquo;
               </p>
               <div className="mt-auto flex flex-wrap gap-1.5">
-                <span className="rounded-full bg-accent/20 px-2 py-1 text-[11px] text-accent">📱 TikTok</span>
+                <span className="rounded-full bg-accent/20 px-2 py-1 text-[11px] text-accent">🥶 Dark</span>
                 <span className="rounded-full bg-white/5 px-2 py-1 text-[11px] text-zinc-400">9:16</span>
               </div>
             </div>
@@ -127,7 +128,8 @@ export default function LandingPage() {
       <section id="styles" className="mx-auto max-w-5xl px-6 py-20">
         <h2 className="text-center text-3xl font-semibold text-white">Editing styles</h2>
         <p className="mx-auto mt-3 max-w-xl text-center text-sm text-zinc-400">
-          Pick a starting point — each style pre-configures cuts, captions, and pacing for you.
+          Six styles built for football — Dark, Fast, Cinematic, Aggressive, Clean, Emotional — plus general-purpose
+          styles for any kind of video.
         </p>
         <div className="mt-12 grid grid-cols-2 gap-4 sm:grid-cols-4">
           {EDITING_STYLES.map((style) => (
@@ -143,7 +145,7 @@ export default function LandingPage() {
       <section className="mx-auto max-w-5xl px-6 py-20">
         <h2 className="text-center text-3xl font-semibold text-white">Example workflow</h2>
         <div className="card mt-12 grid grid-cols-1 divide-y divide-white/5 sm:grid-cols-4 sm:divide-x sm:divide-y-0">
-          {["Upload raw clip", "Describe + choose style", "AI generates the edit", "Preview & export"].map(
+          {["Describe the edit", "Upload your clips", "AI builds the plan", "Preview & export"].map(
             (label, i) => (
               <div key={label} className="flex flex-col items-center gap-2 p-6 text-center">
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent/20 text-sm font-semibold text-accent">
@@ -162,7 +164,7 @@ export default function LandingPage() {
           <h2 className="text-3xl font-semibold text-white">Ready to edit at the speed of thought?</h2>
           <p className="mt-3 text-zinc-400">No timeline. No keyframes. Just describe the edit.</p>
           <Link href="/app" className="btn-primary mt-8">
-            Create an edit
+            Create my edit
           </Link>
         </div>
       </section>

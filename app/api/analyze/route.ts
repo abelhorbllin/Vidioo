@@ -15,6 +15,7 @@ interface AnalyzeRequestBody {
   prompt: string;
   styleId?: EditingStyleId;
   options?: Partial<AdvancedOptions>;
+  player?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -58,6 +59,7 @@ export async function POST(request: NextRequest) {
       prompt: body.prompt,
       styleId: body.styleId,
       options,
+      player: body.player,
     });
 
     const validation = validateEditPlan(plan);
@@ -67,7 +69,7 @@ export async function POST(request: NextRequest) {
     }
 
     updateProject(project.id, {
-      instructions: { prompt: body.prompt, styleId: body.styleId, options },
+      instructions: { prompt: body.prompt, styleId: body.styleId, options, player: body.player },
       analysis,
       plan,
     });

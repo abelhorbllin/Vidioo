@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleApiError, UserFacingError } from "@/lib/errors";
-import { getFile, getProject, updateProject } from "@/lib/storage/fileStore";
-import { renderVideo, type ResolutionLabel } from "@/lib/video/render";
+import { getProject, updateProject } from "@/lib/storage/fileStore";
+import { buildProjectSourceResolver, renderVideo, type ResolutionLabel } from "@/lib/video/render";
 import type { EditPlan } from "@/types/edit";
 
 export const runtime = "nodejs";
@@ -33,14 +33,15 @@ export async function POST(request: NextRequest) {
       throw new UserFacingError("Generate an edit plan before exporting.");
     }
 
-    const videoFile = getFile(project.videoFileId as string);
-    if (!videoFile) {
-      throw new UserFacingError("The uploaded video could not be found. Please upload it again.", 404);
+    if (plan.status === "draft") {
+      throw new UserFacingError("Render a preview first - this edit plan doesn't have footage bound to it yet.");
     }
+
+    const resolveSource = buildProjectSourceResolver(project);
 
     let result;
     try {
-      result = await renderVideo(videoFile.absolutePath, plan, body.resolution);
+      result = await renderVideo(plan, resolveSource, body.resolution);
     } catch (err) {
       console.error("[export] ffmpeg pipeline failed", err);
       throw new UserFacingError("We couldn't render your export. Please try again.");

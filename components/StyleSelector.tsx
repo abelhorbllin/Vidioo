@@ -1,17 +1,19 @@
 "use client";
 
-import { EDITING_STYLES } from "@/lib/styles/editingStyles";
+import { EDITING_STYLES, type EditingStyleDefinition } from "@/lib/styles/editingStyles";
 import type { EditingStyleId } from "@/types/edit";
 
 interface StyleSelectorProps {
   selected: EditingStyleId | undefined;
   onSelect: (id: EditingStyleId | undefined) => void;
+  /** Which styles to show. Defaults to the full list (used on the landing page). */
+  styles?: EditingStyleDefinition[];
 }
 
-export function StyleSelector({ selected, onSelect }: StyleSelectorProps) {
+export function StyleSelector({ selected, onSelect, styles = EDITING_STYLES }: StyleSelectorProps) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      {EDITING_STYLES.map((style) => {
+      {styles.map((style) => {
         const isActive = selected === style.id;
         return (
           <button

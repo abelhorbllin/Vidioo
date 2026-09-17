@@ -50,7 +50,10 @@ const projects = (globalStore.__editaiProjects ??= new Map<string, ProjectState>
 
 export interface ProjectState {
   id: string;
-  videoFileId: string;
+  /** Primary/first uploaded clip - kept for backward compatibility with the original single-video flow. */
+  videoFileId?: string;
+  /** All uploaded source clips for this project, in upload order. Football edits may have several. */
+  clipFileIds: string[];
   createdAt: number;
   updatedAt: number;
   [key: string]: unknown;
@@ -94,13 +97,42 @@ export function getFile(id: string): StoredFile | undefined {
 
 export function createProject(videoFileId: string): ProjectState {
   const id = randomUUID();
-  const state: ProjectState = { id, videoFileId, createdAt: Date.now(), updatedAt: Date.now() };
+  const state: ProjectState = {
+    id,
+    videoFileId,
+    clipFileIds: [videoFileId],
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  projects.set(id, state);
+  return state;
+}
+
+/** Creates a project with no footage yet - the entry point for the prompt-first football flow. */
+export function createDraftProject(): ProjectState {
+  const id = randomUUID();
+  const state: ProjectState = { id, clipFileIds: [], createdAt: Date.now(), updatedAt: Date.now() };
   projects.set(id, state);
   return state;
 }
 
 export function getProject(id: string): ProjectState | undefined {
   return projects.get(id);
+}
+
+/** Appends an uploaded clip file to a project, setting it as the primary video if it's the first one. */
+export function addClipToProject(projectId: string, fileId: string): ProjectState {
+  const existing = projects.get(projectId);
+  if (!existing) throw new Error(`Project ${projectId} not found`);
+  const clipFileIds = [...existing.clipFileIds, fileId];
+  const updated: ProjectState = {
+    ...existing,
+    clipFileIds,
+    videoFileId: existing.videoFileId ?? fileId,
+    updatedAt: Date.now(),
+  };
+  projects.set(projectId, updated);
+  return updated;
 }
 
 export function updateProject(id: string, patch: Record<string, unknown>): ProjectState {

@@ -1,24 +1,34 @@
-import type { AIProvider, VideoInput } from "@/lib/ai/types";
+import type { AIProvider, BindableClip, VideoInput } from "@/lib/ai/types";
+import {
+  buildFootballArc,
+  clipTypeForIndex,
+  defaultEffectForPurpose,
+  generateFootballCaptionCues,
+  generateFootballZooms,
+  mergeEffects,
+  parseFootballPrompt,
+} from "@/lib/ai/football";
 import { getEditingStyle } from "@/lib/styles/editingStyles";
 import type {
-  CaptionCue,
   EditClip,
   EditInstructions,
   EditPlan,
+  EffectInstruction,
   KeyMoment,
   VideoAnalysis,
-  ZoomInstruction,
 } from "@/types/edit";
 
 /**
  * MockAIProvider - a realistic but entirely simulated stand-in for a real
- * video-understanding model.
+ * video-understanding model, specialized for football edits.
  *
  * It never looks at actual pixels or audio content: "key moments" are
  * generated deterministically from the video's duration using a seeded
- * pseudo-random sequence, and caption text is templated. This lets the
- * whole product pipeline (upload -> analyze -> plan -> render -> export) be
- * exercised end to end without any external API key.
+ * pseudo-random sequence, football "purposes" (goal/dribble/skill/...) are
+ * assigned by cycling a narrative arc or matching keywords in the prompt,
+ * and caption text is templated. This lets the whole product pipeline
+ * (idea -> plan -> upload clips -> render -> export) be exercised end to
+ * end without any external API key or real football action recognition.
  *
  * IMPORTANT: nothing produced here should ever be presented to the user as
  * a genuine AI analysis of their footage. The UI is expected to show a
@@ -49,22 +59,31 @@ export class MockAIProvider implements AIProvider {
   ): Promise<EditPlan> {
     await simulateLatency(600, 1200);
 
-    const style = getEditingStyle(instructions.styleId);
+    const football = parseFootballPrompt(instructions.prompt);
+    const styleId = instructions.styleId ?? football.styleId;
+    const style = getEditingStyle(styleId);
     const options = { ...instructions.options, ...(style?.optionOverrides ?? {}) };
 
     const promptLower = instructions.prompt.toLowerCase();
     const wantsSilenceRemoval =
       options.removeSilences || /remove.*silen|cut.*silen|no dead air/.test(promptLower);
-    const wantsCaptions =
-      options.captionStyle !== "off" || /caption|subtitle/.test(promptLower);
-    const wantsZoom = options.autoZoom || /zoom/.test(promptLower);
+    const wantsCaptions = options.captionStyle !== "off" || /caption|subtitle/.test(promptLower);
+    const wantsZoom = options.autoZoom || football.wantsAutoZoom;
 
     const clipCount = clipCountForIntensity(options.intensity, analysis.duration);
     const clips = selectClips(analysis.keyMoments, analysis.duration, clipCount);
+
+    const arc = buildFootballArc(clips.length, football.purposeMentions);
+    clips.forEach((clip, i) => {
+      clip.purpose = arc[i] ?? arc[arc.length - 1];
+      clip.effect = defaultEffectForPurpose(clip.purpose);
+    });
+
     const totalDuration = clips.reduce((sum, c) => sum + (c.end - c.start), 0);
 
-    const captionCues = wantsCaptions ? generateCaptionCues(clips, instructions.prompt) : [];
-    const zooms = wantsZoom ? generateZooms(clips) : [];
+    const captionCues = wantsCaptions ? generateFootballCaptionCues(clips) : [];
+    const zooms = wantsZoom ? generateFootballZooms(clips) : [];
+    const effects = mergeEffects(style?.effectHints ?? [], football.effects);
 
     return {
       duration: Number(totalDuration.toFixed(2)),
@@ -78,8 +97,131 @@ export class MockAIProvider implements AIProvider {
       zooms,
       music: options.music,
       intensity: options.intensity,
-      styleId: instructions.styleId,
+      styleId,
       source: "mock",
+      player: instructions.player ?? football.player,
+      effects,
+      unsupportedRequests: football.unsupportedRequests,
+      status: "ready",
+    };
+  }
+
+  /** Prompt-first: builds an abstract plan before any footage exists. */
+  async generateDraftEditPlan(instructions: EditInstructions): Promise<EditPlan> {
+    await simulateLatency(500, 1000);
+
+    const football = parseFootballPrompt(instructions.prompt);
+    const styleId = instructions.styleId ?? football.styleId;
+    const style = getEditingStyle(styleId);
+    const options = { ...instructions.options, ...(style?.optionOverrides ?? {}) };
+
+    const targetDuration =
+      instructions.targetDurationSeconds ?? football.targetDurationSeconds ?? 15;
+
+    const slotCount = Math.max(3, Math.min(7, Math.round(targetDuration / 3)));
+    const arc = buildFootballArc(slotCount, football.purposeMentions);
+    const perSlot = targetDuration / arc.length;
+
+    const wantsCaptions = options.captionStyle !== "off" || /caption|subtitle/.test(instructions.prompt.toLowerCase());
+    const wantsZoom = options.autoZoom || football.wantsAutoZoom;
+
+    const clips: EditClip[] = arc.map((purpose, i) => ({
+      // Placeholder timing - meaningless until bindDraftPlan() assigns real
+      // footage. Duration-wise intent is tracked via the even split below;
+      // validateEditPlan() does not check these for a "draft" plan.
+      start: Number((i * perSlot).toFixed(2)),
+      end: Number(((i + 1) * perSlot).toFixed(2)),
+      type: clipTypeForIndex(i, arc.length),
+      purpose,
+      effect: defaultEffectForPurpose(purpose),
+    }));
+
+    const effects = mergeEffects(style?.effectHints ?? [], football.effects);
+
+    return {
+      duration: targetDuration,
+      aspectRatio: options.aspectRatio,
+      clips,
+      captions: wantsCaptions,
+      captionStyle: wantsCaptions ? options.captionStyle : "off",
+      captionCues: [], // assigned once real timing exists, in bindDraftPlan()
+      removeSilences: options.removeSilences,
+      autoZoom: wantsZoom,
+      zooms: [], // assigned in bindDraftPlan()
+      music: options.music,
+      intensity: options.intensity,
+      styleId,
+      source: "mock",
+      player: instructions.player ?? football.player,
+      effects,
+      unsupportedRequests: football.unsupportedRequests,
+      status: "draft",
+    };
+  }
+
+  /** Binds a draft plan's abstract slots to real uploaded clips once footage is available. */
+  async bindDraftPlan(plan: EditPlan, clips: BindableClip[]): Promise<EditPlan> {
+    await simulateLatency(300, 700);
+
+    if (clips.length === 0) {
+      throw new Error("Cannot bind an edit plan with no uploaded clips.");
+    }
+
+    const targetPerSlot = plan.duration / plan.clips.length;
+
+    // Reuse the same seeded "key moment" scoring used by the classic
+    // single-video pipeline (generateKeyMoments/selectClips) so multi-clip
+    // football edits pick footage with the same mock "highlight" flavor,
+    // rather than a plain uniform-random slice.
+    const boundClips: EditClip[] = plan.clips.map((slot, i) => {
+      const source = clips[i % clips.length];
+      const slotLen = Math.min(targetPerSlot, source.duration);
+      const ranked = generateKeyMoments(source.duration).sort((a, b) => b.score - a.score);
+      const chosen = ranked.length > 0 ? ranked[i % ranked.length] : null;
+
+      let start: number;
+      if (chosen) {
+        const mid = (chosen.start + chosen.end) / 2;
+        start = Math.max(0, Math.min(source.duration - slotLen, mid - slotLen / 2));
+      } else {
+        const rand = seededRandom(hashString(source.id) + i);
+        start = rand() * Math.max(0, source.duration - slotLen);
+      }
+      const end = Math.min(source.duration, start + slotLen);
+
+      return {
+        ...slot,
+        sourceClipId: source.id,
+        start: Number(start.toFixed(2)),
+        end: Number((end > start ? end : Math.min(source.duration, start + 0.5)).toFixed(2)),
+      };
+    });
+
+    const finalDuration = boundClips.reduce((sum, c) => sum + (c.end - c.start), 0);
+
+    const captionCues = plan.captions ? generateFootballCaptionCues(boundClips) : [];
+    const zooms = plan.autoZoom ? generateFootballZooms(boundClips) : [];
+
+    // Attach clip-scoped effects (flash on the goal, shake on the celebration, ...)
+    // using each bound clip's real timing, merged with the plan's global/style effects.
+    const clipScopedEffects: EffectInstruction[] = boundClips
+      .filter((c) => c.effect)
+      .map((c) => ({
+        type: c.effect!,
+        intensity: 0.6,
+        start: c.start,
+        end: Math.min(c.end, c.start + Math.min(0.6, c.end - c.start)),
+        sourceClipId: c.sourceClipId,
+      }));
+
+    return {
+      ...plan,
+      clips: boundClips,
+      duration: Number(finalDuration.toFixed(2)),
+      captionCues,
+      zooms,
+      effects: mergeEffects(plan.effects, clipScopedEffects),
+      status: "ready",
     };
   }
 
@@ -92,14 +234,14 @@ export class MockAIProvider implements AIProvider {
     if (/dynamic|faster|energy|intense/.test(text)) {
       next.intensity = "high";
     }
-    if (/slow|calm|relax|cinematic/.test(text)) {
+    if (/slow|calm|relax/.test(text)) {
       next.intensity = "low";
     }
     if (/bigger caption|larger caption|dynamic caption/.test(text)) {
       next.captions = true;
       next.captionStyle = "dynamic";
-      if (next.captionCues.length === 0) {
-        next.captionCues = generateCaptionCues(next.clips, instruction);
+      if (next.captionCues.length === 0 && next.status === "ready") {
+        next.captionCues = generateFootballCaptionCues(next.clips);
       }
     }
     if (/no caption|remove caption|caption off/.test(text)) {
@@ -110,10 +252,10 @@ export class MockAIProvider implements AIProvider {
     if (/remove silence|no silence|cut silence/.test(text)) {
       next.removeSilences = true;
     }
-    if (/zoom/.test(text)) {
+    if (/zoom/.test(text) && !/goal|shake|velocity/.test(text)) {
       next.autoZoom = true;
-      if (next.zooms.length === 0) {
-        next.zooms = generateZooms(next.clips);
+      if (next.zooms.length === 0 && next.status === "ready") {
+        next.zooms = generateFootballZooms(next.clips);
       }
     }
     if (/9:16|vertical|tiktok/.test(text)) {
@@ -124,6 +266,85 @@ export class MockAIProvider implements AIProvider {
     }
     if (/1:1|square/.test(text)) {
       next.aspectRatio = "1:1";
+    }
+
+    // --- Football chat heuristics ---
+
+    // "Make the goal hit harder" -> stronger flash/shake on the goal clip(s).
+    if (/goal.*hit harder|harder.*goal|make.*goal.*(stronger|bigger|hit)/.test(text)) {
+      const goalClips = next.clips.filter((c) => c.purpose === "goal");
+      const boosts: EffectInstruction[] = goalClips.flatMap((c) => [
+        {
+          type: "flash" as const,
+          intensity: 0.9,
+          start: c.start,
+          end: Math.min(c.end, c.start + 0.6),
+          sourceClipId: c.sourceClipId,
+        },
+        { type: "shake" as const, intensity: 0.7, start: c.start, end: c.end, sourceClipId: c.sourceClipId },
+      ]);
+      next.effects = mergeEffects(next.effects, boosts);
+    }
+
+    // "Add more velocity" -> add/boost a velocity effect and clip speed on highlights.
+    if (/more velocity|add velocity|faster cuts|speed.*up/.test(text)) {
+      next.effects = mergeEffects(next.effects, [{ type: "velocity", intensity: 0.8 }]);
+      next.clips = next.clips.map((c) =>
+        c.type === "highlight" ? { ...c, speed: Math.min(2, (c.speed ?? 1) + 0.3) } : c,
+      );
+    }
+
+    // "Make the intro cinematic" -> strip disruptive effects from the hook/intro clip.
+    if (/intro.*cinematic|cinematic.*intro|slow.*intro/.test(text)) {
+      const introClip = next.clips.find((c) => c.type === "intro" || c.purpose === "hook");
+      if (introClip) {
+        introClip.speed = 1;
+        introClip.effect = undefined;
+        next.effects = next.effects.filter(
+          (e) =>
+            !(
+              e.start !== undefined &&
+              e.end !== undefined &&
+              e.start >= introClip.start &&
+              e.end <= introClip.end &&
+              e.sourceClipId === introClip.sourceClipId
+            ),
+        );
+      }
+    }
+
+    // "Make the edit more aggressive" -> bump/ensure shake+flash+velocity.
+    if (/more aggressive|make it aggressive/.test(text)) {
+      next.intensity = "high";
+      next.styleId = "aggressive";
+      const boosted = next.effects.map((e) => ({ ...e, intensity: Math.min(1, e.intensity + 0.2) }));
+      const ensured: EffectInstruction[] = ["shake", "flash", "velocity"]
+        .filter((t) => !next.effects.some((e) => e.type === t))
+        .map((t) => ({ type: t as EffectInstruction["type"], intensity: 0.6 }));
+      next.effects = mergeEffects(boosted, ensured);
+    }
+
+    // "Remove the shake" -> drop all shake effects.
+    if (/remove.*shake|no shake|shake off/.test(text)) {
+      next.effects = next.effects.filter((e) => e.type !== "shake");
+      next.clips = next.clips.map((c) => (c.effect === "shake" ? { ...c, effect: undefined } : c));
+    }
+
+    // "Make it 10 seconds" / "make it 15 seconds" -> re-target total duration.
+    const secondsMatch = text.match(/make it (\d+)\s*seconds?|(\d+)\s*seconds?\s*(edit|version)?$/);
+    if (secondsMatch) {
+      const target = Number(secondsMatch[1] ?? secondsMatch[2]);
+      if (target > 0 && next.status === "ready" && next.clips.every((c) => c.end > c.start)) {
+        const currentTotal = next.clips.reduce((s, c) => s + (c.end - c.start), 0);
+        const scale = target / currentTotal;
+        next.clips = next.clips.map((c) => {
+          const len = (c.end - c.start) * scale;
+          return { ...c, end: Number((c.start + Math.max(0.3, len)).toFixed(2)) };
+        });
+        next.duration = Number(next.clips.reduce((s, c) => s + (c.end - c.start), 0).toFixed(2));
+      } else if (next.status === "draft") {
+        next.duration = target;
+      }
     }
 
     // "Make the first N seconds faster": shrink clips overlapping [0, N] by trimming their tails.
@@ -151,6 +372,8 @@ function structuredClonePlan(plan: EditPlan): EditPlan {
     clips: plan.clips.map((c) => ({ ...c })),
     captionCues: plan.captionCues.map((c) => ({ ...c })),
     zooms: plan.zooms.map((z) => ({ ...z })),
+    effects: plan.effects.map((e) => ({ ...e })),
+    unsupportedRequests: [...plan.unsupportedRequests],
   };
 }
 
@@ -159,7 +382,7 @@ function simulateLatency(minMs: number, maxMs: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Simple seeded PRNG (mulberry32) so mock output is stable across calls for the same duration. */
+/** Simple seeded PRNG (mulberry32) so mock output is stable across calls for the same seed. */
 function seededRandom(seed: number): () => number {
   let a = seed;
   return function () {
@@ -169,6 +392,14 @@ function seededRandom(seed: number): () => number {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+function hashString(value: string): number {
+  let h = 0;
+  for (let i = 0; i < value.length; i++) {
+    h = (Math.imul(31, h) + value.charCodeAt(i)) | 0;
+  }
+  return h >>> 0;
 }
 
 function generateKeyMoments(duration: number): KeyMoment[] {
@@ -230,32 +461,6 @@ function selectClips(moments: KeyMoment[], duration: number, count: number): Edi
   return byStart.map((m, idx) => ({
     start: m.start,
     end: m.end,
-    type: idx === 0 ? "intro" : idx === byStart.length - 1 ? "outro" : "highlight",
+    type: clipTypeForIndex(idx, byStart.length),
   }));
-}
-
-function generateCaptionCues(clips: EditClip[], prompt: string): CaptionCue[] {
-  const templates = [
-    "This is the moment 🔥",
-    "Watch this",
-    "No way this just happened",
-    "Here we go",
-    "Wait for it...",
-    "This is huge",
-  ];
-  return clips.map((clip, i) => ({
-    start: clip.start,
-    end: Math.min(clip.end, clip.start + Math.min(2.5, clip.end - clip.start)),
-    text: templates[i % templates.length],
-  }));
-}
-
-function generateZooms(clips: EditClip[]): ZoomInstruction[] {
-  return clips
-    .filter((_, idx) => idx % 2 === 0)
-    .map((clip) => ({
-      start: clip.start,
-      end: clip.end,
-      scale: 1.12,
-    }));
 }
