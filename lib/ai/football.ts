@@ -2,6 +2,7 @@ import type {
   CaptionCue,
   ClipPurpose,
   EditClip,
+  EditPlan,
   EffectInstruction,
   EffectType,
   EditingStyleId,
@@ -20,7 +21,17 @@ import type {
  * of what it returns.
  */
 
-const KNOWN_PLAYERS = ["Mbappé", "Mbappe", "Messi", "Ronaldo", "Yamal", "Vinicius", "Vinícius", "Bellingham"];
+export const KNOWN_PLAYERS = [
+  "Mbappé",
+  "Mbappe",
+  "Messi",
+  "Ronaldo",
+  "Yamal",
+  "Haaland",
+  "Vinicius",
+  "Vinícius",
+  "Bellingham",
+];
 
 const PURPOSE_KEYWORDS: { purpose: ClipPurpose; pattern: RegExp }[] = [
   { purpose: "goal", pattern: /\bgoals?\b/ },
@@ -101,6 +112,22 @@ export function parseFootballPrompt(prompt: string): FootballContext {
     unsupportedRequests,
   };
 }
+
+export const PURPOSE_LABELS: Record<ClipPurpose, string> = {
+  hook: "Hook",
+  dribble: "Dribble",
+  skill: "Skill",
+  goal: "Goal",
+  assist: "Assist",
+  celebration: "Celebration",
+  shot: "Shot",
+  tackle: "Tackle",
+  save: "Save",
+  sprint: "Sprint",
+  pass: "Pass",
+  reaction: "Reaction",
+  closeup: "Close-up",
+};
 
 const FILLER_PURPOSES: ClipPurpose[] = ["dribble", "skill", "sprint", "pass", "reaction"];
 
@@ -200,4 +227,61 @@ export function mergeEffects(...groups: EffectInstruction[][]): EffectInstructio
     }
   }
   return Array.from(byType.values());
+}
+
+/** Simple seeded PRNG (mulberry32) so mock output is stable across calls for the same seed. */
+export function seededRandom(seed: number): () => number {
+  let a = seed;
+  return function () {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export function hashString(value: string): number {
+  let h = 0;
+  for (let i = 0; i < value.length; i++) {
+    h = (Math.imul(31, h) + value.charCodeAt(i)) | 0;
+  }
+  return h >>> 0;
+}
+
+/** Per-clip short "headline effect" windows (flash on the goal, shake on the celebration, ...), scoped to each clip's own real timing. */
+export function computeClipScopedEffects(clips: EditClip[]): EffectInstruction[] {
+  return clips
+    .filter((c) => c.effect)
+    .map((c) => ({
+      type: c.effect!,
+      intensity: 0.6,
+      start: c.start,
+      end: Math.min(c.end, c.start + Math.min(0.6, c.end - c.start)),
+      sourceClipId: c.sourceClipId,
+    }));
+}
+
+/**
+ * Finishes turning a draft plan "ready" once its clips have real start/end
+ * times bound to source footage: computes captions/zooms/clip-scoped
+ * effects from the now-real timeline and the final total duration. Shared
+ * by both the AIProvider's bindDraftPlan (user-uploaded footage) and
+ * DemoAssetProvider's binder (synthetic placeholder footage).
+ */
+export function finalizeBoundPlan(plan: EditPlan, boundClips: EditClip[]): EditPlan {
+  const finalDuration = boundClips.reduce((sum, c) => sum + (c.end - c.start), 0);
+  const captionCues = plan.captions ? generateFootballCaptionCues(boundClips) : [];
+  const zooms = plan.autoZoom ? generateFootballZooms(boundClips) : [];
+  const clipScopedEffects = computeClipScopedEffects(boundClips);
+
+  return {
+    ...plan,
+    clips: boundClips,
+    duration: Number(finalDuration.toFixed(2)),
+    captionCues,
+    zooms,
+    effects: mergeEffects(plan.effects, clipScopedEffects),
+    status: "ready",
+  };
 }

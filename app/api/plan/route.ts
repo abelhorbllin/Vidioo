@@ -4,7 +4,7 @@ import { isDemoAIMode } from "@/lib/ai/provider";
 import { handleApiError, UserFacingError } from "@/lib/errors";
 import { createDraftProject, getProject, updateProject } from "@/lib/storage/fileStore";
 import { validateEditPlan } from "@/lib/validation/editPlan";
-import { DEFAULT_ADVANCED_OPTIONS, type AdvancedOptions, type EditingStyleId } from "@/types/edit";
+import { DEFAULT_ADVANCED_OPTIONS, type AdvancedOptions, type ClipPurpose, type EditingStyleId } from "@/types/edit";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -17,6 +17,8 @@ interface PlanRequestBody {
   targetDurationSeconds?: number;
   /** Attach the draft plan to a project that already has clips uploaded, instead of creating a fresh empty one. */
   projectId?: string;
+  /** Explicit narrative arc (from "Create Similar Edit" on Trending) instead of one parsed from the prompt. */
+  sceneArcOverride?: ClipPurpose[];
 }
 
 /**
@@ -50,6 +52,7 @@ export async function POST(request: NextRequest) {
       options,
       player: body.player,
       targetDurationSeconds: body.targetDurationSeconds,
+      sceneArcOverride: body.sceneArcOverride,
     });
 
     const validation = validateEditPlan(plan);

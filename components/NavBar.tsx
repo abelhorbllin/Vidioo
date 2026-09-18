@@ -12,15 +12,15 @@ export function NavBar() {
           <Link href="/#how-it-works" className="transition-colors hover:text-white">
             How it works
           </Link>
-          <Link href="/#styles" className="transition-colors hover:text-white">
-            Styles
+          <Link href="/trending" className="transition-colors hover:text-white">
+            Trending
           </Link>
-          <Link href="/#capabilities" className="transition-colors hover:text-white">
-            Capabilities
+          <Link href="/edits" className="transition-colors hover:text-white">
+            My Edits
           </Link>
         </nav>
         <Link href="/app" className="btn-primary !px-5 !py-2 text-sm">
-          Create an edit
+          Create my edit
         </Link>
       </div>
     </header>

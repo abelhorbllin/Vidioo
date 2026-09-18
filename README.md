@@ -1,118 +1,171 @@
-# EditAI (MVP) — Football Edits
+# EditAI — AI Football Edit Generator
 
-Describe the football edit you want ("a 15 second dark Mbappé edit with fast
-cuts, velocity, zooms on his skills and a strong effect on the goal"), let
-the AI plan it, upload the clips you want used, and get back a real,
-rendered edit — cut, effected, captioned, and reframed by an ffmpeg-driven
-pipeline. This is a deliberately small, functional MVP: no database, no
-accounts, no billing, and **no automatic footage scraping** - you always
-provide the source clips.
+Describe the edit you want ("a 15 second dark Mbappé edit with fast cuts,
+velocity, zooms on his skills and a strong effect on the goal") and get back
+a real, rendered video — **no clips required to get started**. The AI plans
+the montage, footage is resolved (your own clips if you provide them,
+clearly-labeled synthetic placeholder clips if you don't), and a real
+ffmpeg pipeline cuts, effects, captions, and exports it. A second pillar,
+**Trending**, lets you discover example edit structures and create an
+original edit inspired by one (never a copy).
+
+This is a deliberately small, functional MVP: no database, no accounts, no
+billing, and **no automatic footage scraping** from any platform.
+
+## Architecture
+
+```
+PROMPT
+  |
+  v
+AIProvider          understands the prompt, builds an EditPlan (draft)
+  |
+  v
+AssetProvider       resolves real footage for the plan's clips:
+  |                   - your uploaded clips, if any (preferred)
+  |                   - otherwise synthetic "Demo Asset Mode" clips
+  v
+RenderEngine        real ffmpeg: cut, effects, captions, aspect ratio
+  |                   (lib/video/render.ts)
+  v
+PREVIEW  -->  AI CHAT (re-plans + re-renders)  -->  EXPORT
+```
+
+`TrendingProvider` is a parallel, independent abstraction that feeds the
+Trending tab; "Create Similar Edit" hands its analysis to the same
+AIProvider pipeline above (as a prompt + an optional exact scene-arc
+override), it never touches AssetProvider or real footage directly.
 
 ## What actually works today
 
-- **Prompt-first planning** — describe the edit, optionally name a player
-  and pick a football style, and the AI drafts an `EditPlan` (JSON) *before*
-  any footage exists. The plan is validated before it's ever used.
-- **Upload clips (one or many)** — drag & drop or browse for MP4/MOV/WEBM,
-  before or after describing the edit. The server validates
-  extension/MIME/size, then reads real duration/resolution/fps via `ffprobe`
-  and extracts a real thumbnail via `ffmpeg`, for each clip.
-- **Binding** — once at least one clip is uploaded, the abstract plan is
-  bound to real footage: each purpose-tagged slot (hook, dribble, skill,
-  goal, celebration, ...) gets a real source clip and a real time range
-  picked via the same seeded "key moment" scoring the original single-video
-  pipeline used.
-- **Real video engine** (`lib/video/`) — every operation genuinely invokes
-  `ffmpeg`, now across **multiple source files** in one render:
+- **Prompt-only generation, end to end** — type a prompt, hit Generate,
+  and get a real rendered video with **zero clips uploaded**. `/api/plan`
+  builds an abstract plan; `/api/render` resolves it via `AssetProvider`
+  (`lib/assets/`) and renders for real.
+- **DemoAssetProvider** (`lib/assets/demo.ts`) — when no footage is
+  uploaded, generates small synthetic placeholder clips locally with
+  ffmpeg (test-pattern video, one per needed "purpose" like hook/skill/
+  goal), each burned with a visible **"DEMO ASSET · ⟨PURPOSE⟩"** caption so
+  it can never be mistaken for real footage. These are real video files
+  that flow through the exact same render pipeline as real uploads.
+- **Upload clips (optional, one or many)** — drag & drop or browse for
+  MP4/MOV/WEBM, any time. The server validates extension/MIME/size, reads
+  real duration/resolution/fps via `ffprobe`, and extracts a real
+  thumbnail. Uploading real clips after seeing a demo-mode preview and
+  re-rendering swaps the synthetic footage out for real, per-clip.
+- **Real video engine** (`lib/video/render.ts`) — every operation
+  genuinely invokes `ffmpeg`, across **multiple source files** in one
+  render:
   - `analyzeVideoMetadata` / `extractThumbnail` — via `ffprobe`/`ffmpeg`.
-  - `detectSilenceIntervals(ForSources)` — real audio analysis via ffmpeg's
-    `silencedetect` filter (not AI), per source file.
-  - `cutVideo` — trims and concatenates segments, each from its own source
-    file, with an optional real speed multiplier (`velocity`) per segment.
+  - `detectSilenceIntervals(ForSources)` — real audio analysis via
+    ffmpeg's `silencedetect` filter (not AI), per source file.
+  - `cutVideo` — trims and concatenates segments, each from its own
+    source file, with an optional real speed multiplier (`velocity`).
   - `removeSilences` — subtracts detected silence from the kept clips.
   - `convertAspectRatio` — crops/scales to 9:16, 16:9, or 1:1.
-  - `applyZoom` — a real crop-and-scale zoom-in over requested time ranges.
-  - `applyShake` — a real time-varying crop offset ("camera shake").
-  - `applyFlash` — a real brief brightness spike at a time range.
-  - `applyColorGrade` — a real contrast/brightness/saturation grade (the
-    "dark" look).
-  - `addCaptions` — burns in a real `.ass` subtitle track (via ffmpeg's
-    `subtitles`/libass filter) using a bundled font, so it works with no
-    system fonts installed.
+  - `applyZoom` / `applyShake` / `applyFlash` / `applyColorGrade` — real
+    crop-zoom, time-varying crop jitter, brightness spike, and
+    contrast/brightness/saturation grade.
+  - `addCaptions` — burns in a real `.ass` subtitle track (ffmpeg's
+    `subtitles`/libass filter) with a bundled font.
+  - `muteAudio` — really strips the audio track (`-an`) when "No music"
+    is selected - this is a real ffmpeg pass, not a cosmetic UI toggle.
   - `renderVideo` — orchestrates all of the above into one pipeline.
-- **Preview, football-aware chat edits, and export** — a low-res preview
-  renders first; the chat box below it understands football-flavored
-  instructions ("make the goal hit harder", "add more velocity", "remove
-  the shake", "make it 10 seconds") and re-renders; the export panel renders
-  720p/1080p MP4 and the Download button serves the real file (with HTTP
-  Range support for scrubbing).
-- **Edit timeline** — visualizes the AI's narrative arc (hook → dribble →
-  skill → goal → celebration, or whatever the plan actually contains) with
-  icons for the real effects applied to each clip.
-- **Error handling** — invalid uploads, missing projects, missing footage,
-  and ffmpeg failures all surface a clean, human-readable message; the real
-  error is logged server-side only.
+- **Football-aware chat editor** — re-plans and re-renders on
+  instructions like "make the goal hit harder", "add more velocity",
+  "remove the shake", "make it 10 seconds", "replace Ronaldo with
+  Mbappé", "I want a 2 second intro".
+- **Trending tab** (`/trending`) — filterable list (platform, time range,
+  sort, player, style) of `DemoTrendingProvider`'s dataset, each card
+  showing stats and detected structure, clearly labeled **"Demo Trending
+  Data"**.
+- **Analyze + Create Similar Edit** (`/trending/[id]`) — a full structure
+  breakdown (cuts, speed ramps, slow motion, zooms, shakes, flashes,
+  beat moments, captions, energy, pacing, narrative arc) and a remix flow
+  that picks a new player and a similarity level ("Inspired" vs. "Very
+  Similar Structure"), then hands off to `/app` with a pre-filled prompt
+  (and, for "Very Similar", the exact narrative arc) — it never copies or
+  downloads the original video.
+- **My Edits** (`/edits`) — lists every project generated on this server
+  process with Open / Duplicate / Delete / Download actions.
+- **Export** — real 720p/1080p MP4 render; the Download button serves the
+  actual file with HTTP Range support.
+- **Error handling** — invalid uploads, missing projects, missing
+  footage, and ffmpeg failures all surface a clean, human-readable
+  message; the real error is logged server-side only.
 - **The original single-video flow still works unchanged** — upload one
-  video via the same uploader, and the classic real-per-video
-  key-moment-analysis path (`/api/analyze`) still produces an immediately
-  "ready" plan exactly as before, now also football-enriched (purposes,
-  effects, player, style).
+  video first, and the classic real-per-video key-moment-analysis path
+  (`/api/analyze`) still produces an immediately "ready" plan exactly as
+  before, now also football-enriched (purposes, effects, player, style).
 
-## What is simulated (Mock AI)
+## What is simulated (Mock AI) — `MOCK_AI=true` by default
 
-There is no real understanding of any video's content, and no football
-action recognition, anywhere in this build. `MOCK_AI` (on by default)
-drives everything AI-shaped:
+There is no real language understanding or football action recognition
+anywhere in this build:
 
 - **Prompt interpretation** (`lib/ai/football.ts`) — player name, style,
-  target duration, and requested effects are extracted by **keyword/regex
-  matching** on the prompt text, not language understanding. "Mbappé",
-  "dark", "15 second", "velocity", "shake", "goal" are string matches.
+  target duration, and requested effects/purposes are extracted by
+  **keyword/regex matching**, not an LLM. "Mbappé", "dark", "15 second",
+  "velocity", "goal" are string matches, not semantic understanding.
 - **"Key moments" / highlight selection** — a seeded pseudo-random spread
   over each video's duration, not real scene/action detection.
 - **Football "purposes"** (hook/dribble/skill/goal/celebration/...) — a
-  fixed or keyword-nudged narrative arc assigned to clip slots in order,
-  not detected from the footage.
-- **Clip-to-slot binding** — round-robins uploaded clips across the plan's
-  slots and picks a pseudo-random (seeded, "key-moment"-weighted) time range
-  within each - it does not know what's actually happening in your footage.
-- Caption **text** — templated phrases per purpose ("GOAL! ⚽", "🔥 Skills",
-  ...), not real speech-to-text. (The captions are still *really* burned
-  into the video — only the words come from a template.)
-- The chat editor (`modifyEditPlan`) — keyword/regex matching on your
-  instruction, not a language model.
+  fixed or keyword-nudged narrative arc assigned to clip slots in order.
+- **Clip-to-slot binding** — round-robins available clips across the
+  plan's slots (purpose-matched for demo assets) and picks a pseudo-random
+  time range within each - it does not know what's actually happening in
+  any footage, real or synthetic.
+- Caption **text** — templated phrases per purpose ("GOAL! ⚽", "🔥
+  Skills", ...), not real speech-to-text. The burn-in itself is real;
+  only the words are templated.
+- The chat editor (`modifyEditPlan`) — keyword/regex matching, not a
+  language model.
+- **Trending data** (`lib/trending/demo.ts`) — 12 hand-authored entries
+  with illustrative view/like/comment numbers. No platform is scraped or
+  queried.
 
-Whenever mock mode is active, the app shows a **"Demo AI mode"** badge in
-`/app`. This is intentional and load-bearing: nothing here should be
-mistaken for a genuine AI analysis of your footage, and the app never
-claims to have found or downloaded footage of a named player — rendering
-always uses the clips you upload.
+Whenever mock/demo mode is active, the UI shows **"Demo AI mode"**,
+**"Demo Asset Mode"**, and/or **"Demo Trending Data"** badges. This is
+intentional and load-bearing: nothing here should be mistaken for a
+genuine AI analysis, real footage, or real trending statistics.
 
-Real, non-AI signal processing (silence detection, metadata, thumbnails) is
-never mocked — those numbers come from actually reading the file(s).
+Real, non-AI signal processing (silence detection, metadata, thumbnails)
+is never mocked.
 
 ## What is explicitly NOT implemented (surfaced, not faked)
 
-- **Motion blur** and **dynamic cross-fade transitions** between clips -
-  cuts are always hard cuts. If your prompt mentions these, the plan's
+- **Motion blur** and **dynamic cross-fade transitions** — cuts are
+  always hard cuts. If your prompt mentions these, the plan's
   `unsupportedRequests` lists them and the UI shows them under "Not yet
-  available" - it never silently drops or fakes the request.
-- **Beat sync** - `lib/video/audio.ts` stubs a `detectBeats()` function that
-  throws "not implemented" on purpose, so there's a clear place to wire up
-  real audio-analysis later. Cuts are not currently timed to music.
-- **Automatic footage scraping** - there is no YouTube/TikTok/Instagram/
-  broadcast scraper anywhere in this codebase, and there won't be one added
-  without a licensed footage provider in place. You always supply the clips.
+  available".
+- **Beat sync** — `lib/video/audio.ts` stubs a `detectBeats()` function
+  that throws "not implemented" on purpose. Cuts are not timed to music.
+- **Custom music upload** — the UI shows the option but it's disabled
+  ("coming soon") rather than silently accepting a file it wouldn't use.
+- **Automatic footage/trending scraping** — no YouTube/TikTok/Instagram
+  scraper exists anywhere in this codebase.
 
-## What needs a real AI provider to become real
+## What needs a real AI provider / external API to become real
 
-- Understanding *what's actually happening* in uploaded footage (true
-  action/highlight detection - actually recognizing a dribble, a goal, a
-  celebration).
-- Real speech-to-text for caption *content*.
-- A chat editor that understands open-ended instructions instead of
-  keyword-matching.
-- Real beat detection for music-synced cuts.
+See the table below. Nothing here is wired up - `AI_PROVIDER`,
+`ASSET_PROVIDER`, and `TRENDING_PROVIDER` all throw a clear error if set
+to anything other than the built-in demo implementation, rather than
+silently pretending to be real.
+
+| Capability | Needed for | API options | Cost | Notes |
+| --- | --- | --- | --- | --- |
+| Real prompt understanding + chat | Core AI quality | Anthropic/OpenAI/Google LLM API | Pay-per-token, low for this use case | Replaces `lib/ai/mock.ts`'s regex parsing with a real model call in a new `lib/ai/<vendor>.ts` |
+| Real football action recognition | Real highlight detection in uploaded footage | A video-understanding model (e.g. a multimodal LLM with video input, or a custom CV model) | Meaningfully higher cost, scales with video length | Needed before "AI finds the goal in your footage" can be true |
+| Real speech-to-text for captions | Accurate caption *content* | Whisper API or similar | Pay-per-minute of audio | Caption burn-in already works; only the text source would change |
+| Real beat detection | Beat-synced cuts | An onset/tempo-detection library (can run locally, no external API needed) | Free (compute only) | `lib/video/audio.ts` is the integration point |
+| Real trending data | Real Trending tab | **No platform offers a public, free "trending football edits" API.** TikTok/Instagram/YouTube's official APIs expose your *own* content's stats, not open discovery of others' trending videos by topic | Would likely require a paid social-listening/analytics vendor (e.g. Brandwatch, Exolyser) | This is the one area where "real" may not be feasible without a commercial data partner |
+| Real/licensed footage | Real player footage instead of demo assets | A licensed sports-footage/highlights provider (e.g. a rights-holder API) or a real video-generation API (e.g. Runway, Pika, Sora) once viable for this use case | Licensing fees or per-generation API cost | `lib/assets/` already models this as `"licensed_footage"` / `"video_generation"` AssetProvider modes - implement `lib/assets/<name>.ts` |
+
+**Required for MVP demo:** nothing - `npm install && npm run dev` runs the
+entire product with zero API keys.
+**Required for production:** at minimum a real LLM for AI quality; the
+rest can be added incrementally without changing the surrounding
+architecture.
 
 ## Stack
 
@@ -128,121 +181,114 @@ cp .env.example .env      # optional - defaults already work
 npm run dev
 ```
 
-Open http://localhost:3000. No API key or system `ffmpeg` install is
-required — `ffmpeg-static` and `@ffprobe-installer/ffprobe` bundle real
-binaries as npm dependencies.
+Open http://localhost:3000/app and generate an edit with just a prompt -
+no upload, no API key, no system `ffmpeg` install needed.
 
 ## Environment variables
 
-| Variable        | Default | Meaning                                                              |
-| ---------------- | ------- | --------------------------------------------------------------------- |
-| `AI_PROVIDER`    | `mock`  | Which `AIProvider` implementation to use. Only `mock` exists today.   |
-| `MOCK_AI`        | `true`  | Forces mock mode regardless of `AI_PROVIDER`.                         |
-| `MAX_UPLOAD_MB`  | `300`   | Maximum accepted upload size, in megabytes.                           |
+| Variable            | Default | Meaning                                                                 |
+| -------------------- | ------- | ------------------------------------------------------------------------ |
+| `AI_PROVIDER`        | `mock`  | Which `AIProvider` implementation to use. Only `mock` exists today.      |
+| `MOCK_AI`             | `true`  | Forces mock mode regardless of `AI_PROVIDER`.                            |
+| `ASSET_PROVIDER`      | `demo`  | Which `AssetProvider` implementation to use. Only `demo` exists today.   |
+| `TRENDING_PROVIDER`   | `demo`  | Which `TrendingProvider` implementation to use. Only `demo` exists today.|
+| `MAX_UPLOAD_MB`       | `300`   | Maximum accepted upload size, in megabytes.                              |
 
 ## Project structure
 
 ```
 /app
-  page.tsx              landing page (football framing)
-  /app/page.tsx          the combined product: idea + player + style +
-                          clips on one screen -> generate -> result
-  /api/plan               prompt-first: generates a draft EditPlan (no footage needed yet)
-  /api/upload             validates + stores a clip, extracts metadata/thumbnail;
-                           appends to an existing project when projectId is given
-  /api/analyze            classic single-video path: real per-video key-moment
-                           analysis + generateEditPlan (still fully supported)
-  /api/edit               runs AIProvider.modifyEditPlan (the football-aware chat editor)
-  /api/render             binds a draft plan to uploaded clips if needed, then
-                           renders a low-res preview via the ffmpeg pipeline
-  /api/export             renders the final 720p/1080p export
-  /api/files/[id]         serves a stored file by opaque id (Range-aware)
+  page.tsx                landing page (prompt-first framing)
+  /app/page.tsx             Create screen: prompt + player + style + format +
+                            duration + music + optional clips -> Generate -> result
+  /trending/page.tsx        Trending list + filters
+  /trending/[id]/page.tsx   Analyze + "Create Similar Edit"
+  /edits/page.tsx           My Edits
+  /api/plan                 prompt-first: generates a draft EditPlan (no footage needed)
+  /api/upload                validates + stores a clip; appends to an existing
+                             project when projectId is given
+  /api/analyze               classic single-video path (still fully supported)
+  /api/edit                  runs AIProvider.modifyEditPlan (the chat editor)
+  /api/render                 resolves assets (AssetProvider) + binds + renders
+  /api/export                 renders the final 720p/1080p export
+  /api/files/[id]              serves a stored file by opaque id (Range-aware)
+  /api/trending, /api/trending/[id]   TrendingProvider-backed
+  /api/projects, /api/projects/[id]    My Edits listing/detail/delete
 
-/components               VideoUploader (multi-clip), EditPrompt, PlayerInput,
-                           StyleSelector, AdvancedOptions, GenerationProgress,
-                           EditSummary, EditTimeline, ExportPanel, AIEditChat,
-                           VideoPreview, NavBar
+/components   VideoUploader (multi-clip), EditPrompt, PlayerInput, StyleSelector,
+              FormatSelector, DurationSelector, MusicSelector, AdvancedOptions,
+              GenerationProgress, EditSummary, EditTimeline, ExportPanel,
+              AIEditChat, VideoPreview, DashboardNav, TrendingCard, TrendingFilters
 
 /lib
   /ai
-    types.ts              the AIProvider interface (analyze/generate/modify/
-                           generateDraftEditPlan/bindDraftPlan)
-    mock.ts                MockAIProvider - the only implementation today
-    football.ts             football prompt parsing, narrative arc, templated
-                             captions/zooms - all explicitly MOCK, documented as such
-    provider.ts             factory: the ONLY place that picks a provider
-    analyze.ts               analyzeVideo() / generateEditPlan() / modifyEditPlan() /
-                             generateDraftEditPlan() / bindDraftPlan()
+    types.ts        AIProvider interface (analyze/generate/modify/
+                     generateDraftEditPlan/bindDraftPlan)
+    mock.ts          MockAIProvider - the only implementation today
+    football.ts       prompt parsing, narrative arc, templated captions/zooms,
+                      shared bind-finishing logic - all explicitly MOCK
+    provider.ts       factory: the ONLY place that picks an AIProvider
+  /assets
+    types.ts          AssetProvider interface (user_upload / demo /
+                      video_generation / licensed_footage modes)
+    demo.ts            DemoAssetProvider - generates synthetic labeled clips
+    provider.ts        factory: the ONLY place that picks an AssetProvider
+  /trending
+    types.ts, demo.ts, provider.ts, format.ts   same pattern, for Trending
   /video
-    ffmpeg.ts               ffmpeg/ffprobe setup, shared helpers
-    metadata.ts              analyzeVideoMetadata(), extractThumbnail()
-    render.ts                cutVideo() (multi-source), removeSilences(),
-                             convertAspectRatio(), applyZoom(), applyShake(),
-                             applyFlash(), applyColorGrade(), addCaptions(),
-                             renderVideo()
-    captions.ts               .ass subtitle file generation
-    audio.ts                  detectBeats() stub - not implemented, on purpose
-  /validation
-    editPlan.ts              validateEditPlan() - strict for "ready" plans,
-                             relaxed for abstract "draft" plans
-    upload.ts                upload validation (type/size)
-  /storage
-    fileStore.ts              temporary on-disk files + in-memory project state
-                             (now tracks a list of clips per project, not just one)
-  /styles
-    editingStyles.ts          12 style presets: the original 8 generic ones plus
-                             6 football styles (Dark, Fast, Cinematic, Aggressive,
-                             Clean, Emotional - 2 reuse existing generic styles)
-  /edit
-    summary.ts                EditPlan -> EditSummary (now includes player,
-                             clip count, effects count, unsupported requests)
+    ffmpeg.ts, metadata.ts, captions.ts, audio.ts (detectBeats stub)
+    render.ts    cutVideo() (multi-source), removeSilences(), convertAspectRatio(),
+                 applyZoom(), applyShake(), applyFlash(), applyColorGrade(),
+                 addCaptions(), muteAudio(), renderVideo(), buildProjectSourceResolver()
+  /validation     editPlan.ts (draft vs. ready), upload.ts
+  /storage        fileStore.ts (multi-clip projects, listProjects/deleteProject)
+  /styles         editingStyles.ts (12 presets: 8 generic + 6 football)
+  /edit           summary.ts (EditPlan -> EditSummary)
 
-/types
-  video.ts, edit.ts          shared type definitions (EditPlan gained player,
-                             effects, unsupportedRequests, status, and clips
-                             gained sourceClipId/purpose/effect/speed - all
-                             additive)
+/types   edit.ts, video.ts, project.ts
 
-/assets/fonts                bundled DejaVu fonts (Bitstream Vera license),
-                             used for burned-in captions independent of the host
+/assets/fonts   bundled DejaVu fonts (Bitstream Vera license), used for
+                burned-in captions independent of the host
 ```
 
-There is no database. `lib/storage/fileStore.ts` keeps everything in memory
-(process-lifetime) plus temp files under `.data/{uploads,tmp,exports}`
-(gitignored, auto-cleaned after an hour). The types and structure already
-separate `users` / `projects` / `videos` / `edits` / `exports` conceptually
-so a real database can be dropped in later without touching the rest of the
-app.
+There is no database. `lib/storage/fileStore.ts` keeps everything in
+memory (process-lifetime) plus temp files under `.data/{uploads,tmp,
+exports,demo}` (gitignored, auto-cleaned after an hour). **My Edits has no
+authentication - it lists every project on this server process, for every
+visitor.** The types already separate `EditProject` / `EditPlan` /
+`TrendingEdit` conceptually so a real database and per-user auth can be
+added later without reshaping the app.
 
-## Connecting a real AI provider
+## Connecting a real provider
 
-1. Create `lib/ai/<vendor>.ts` implementing the `AIProvider` interface from
-   `lib/ai/types.ts` (see `lib/ai/mock.ts` for the shape to match, including
-   `generateDraftEditPlan` and `bindDraftPlan`).
-2. Read the vendor's API key from an environment variable — never hardcode
-   it, never send it to the client (every AI call already happens
-   server-side in the API routes).
-3. Add a branch in `lib/ai/provider.ts`'s `getAIProvider()` that returns your
-   new provider when `AI_PROVIDER=<vendor>`.
-4. Set `AI_PROVIDER=<vendor>` and unset/`false` `MOCK_AI` in your `.env`.
+Same pattern for all three abstractions:
 
-Nothing else needs to change — the API routes, validation, and video engine
-are already provider-agnostic.
+1. Create `lib/<layer>/<vendor>.ts` implementing the interface from
+   `lib/<layer>/types.ts` (see the `demo.ts` in that folder for the shape).
+2. Read the vendor's API key from an environment variable - never
+   hardcode it, never send it to the client.
+3. Add a branch in `lib/<layer>/provider.ts`'s factory function.
+4. Set the corresponding env var (`AI_PROVIDER`, `ASSET_PROVIDER`, or
+   `TRENDING_PROVIDER`).
+
+Nothing else needs to change - the API routes, validation, and render
+engine are already provider-agnostic.
 
 ## Known limitations (by design, for this MVP)
 
 - No accounts, no persistence beyond the current server process, no
-  payments.
+  payments, no privacy on My Edits (see above).
 - Preview and export re-run the full ffmpeg pipeline independently (no
-  render caching).
-- Zoom is a static crop-in over a time range, not an animated Ken Burns pan;
-  shake is a time-varying crop jitter, not a physically simulated camera;
-  velocity is a constant per-clip speed multiplier (clamped to ffmpeg
-  atempo's [0.5, 2] range), not a smooth ramp.
-- Motion blur, cross-fade transitions, and beat sync are not implemented -
-  see above.
-- "Dynamic" captions are a bigger/bolder style, not word-by-word karaoke
-  highlighting.
+  render caching); demo asset stock clips *are* cached per server process.
+- Zoom is a static crop-in, shake is a time-varying crop jitter (not a
+  physically simulated camera), velocity is a constant per-clip speed
+  multiplier (clamped to ffmpeg atempo's [0.5, 2] range) - none are
+  smooth/animated ramps.
+- Motion blur, cross-fade transitions, beat sync, and custom music upload
+  are not implemented (see above).
+- "Dynamic" captions are a bigger/bolder style, not word-by-word karaoke.
 - Rendering runs synchronously inside the API route (fine for short MVP
-  clips); moving it to a background worker/job queue is a natural next step
-  before handling long videos or concurrent users at scale.
+  clips); a background worker/job queue is the natural next step before
+  handling long videos or many concurrent users.
+- Trending data is a fixed local dataset, not live - see the API table
+  above for why a real equivalent needs a commercial data source.

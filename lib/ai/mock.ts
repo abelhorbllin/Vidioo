@@ -3,10 +3,14 @@ import {
   buildFootballArc,
   clipTypeForIndex,
   defaultEffectForPurpose,
+  finalizeBoundPlan,
   generateFootballCaptionCues,
   generateFootballZooms,
+  hashString,
+  KNOWN_PLAYERS,
   mergeEffects,
   parseFootballPrompt,
+  seededRandom,
 } from "@/lib/ai/football";
 import { getEditingStyle } from "@/lib/styles/editingStyles";
 import type {
@@ -119,7 +123,9 @@ export class MockAIProvider implements AIProvider {
       instructions.targetDurationSeconds ?? football.targetDurationSeconds ?? 15;
 
     const slotCount = Math.max(3, Math.min(7, Math.round(targetDuration / 3)));
-    const arc = buildFootballArc(slotCount, football.purposeMentions);
+    const arc = instructions.sceneArcOverride?.length
+      ? instructions.sceneArcOverride
+      : buildFootballArc(slotCount, football.purposeMentions);
     const perSlot = targetDuration / arc.length;
 
     const wantsCaptions = options.captionStyle !== "off" || /caption|subtitle/.test(instructions.prompt.toLowerCase());
@@ -197,32 +203,7 @@ export class MockAIProvider implements AIProvider {
       };
     });
 
-    const finalDuration = boundClips.reduce((sum, c) => sum + (c.end - c.start), 0);
-
-    const captionCues = plan.captions ? generateFootballCaptionCues(boundClips) : [];
-    const zooms = plan.autoZoom ? generateFootballZooms(boundClips) : [];
-
-    // Attach clip-scoped effects (flash on the goal, shake on the celebration, ...)
-    // using each bound clip's real timing, merged with the plan's global/style effects.
-    const clipScopedEffects: EffectInstruction[] = boundClips
-      .filter((c) => c.effect)
-      .map((c) => ({
-        type: c.effect!,
-        intensity: 0.6,
-        start: c.start,
-        end: Math.min(c.end, c.start + Math.min(0.6, c.end - c.start)),
-        sourceClipId: c.sourceClipId,
-      }));
-
-    return {
-      ...plan,
-      clips: boundClips,
-      duration: Number(finalDuration.toFixed(2)),
-      captionCues,
-      zooms,
-      effects: mergeEffects(plan.effects, clipScopedEffects),
-      status: "ready",
-    };
+    return { ...finalizeBoundPlan(plan, boundClips), assetMode: "user" };
   }
 
   async modifyEditPlan(currentPlan: EditPlan, instruction: string): Promise<EditPlan> {
@@ -266,6 +247,32 @@ export class MockAIProvider implements AIProvider {
     }
     if (/1:1|square/.test(text)) {
       next.aspectRatio = "1:1";
+    }
+
+    // "Replace Ronaldo with Mbappé" / "remplace Ronaldo par Mbappé" -> swap the player context.
+    // This only changes EditPlan.player (metadata for future asset lookups) -
+    // it never re-fetches or swaps in real footage of the new player.
+    const replaceMatch =
+      text.match(/replace\s+\w+\s+(?:with|by)\s+([a-zà-ÿ]+)/i) ?? text.match(/remplace\s+\w+\s+par\s+([a-zà-ÿ]+)/i);
+    if (replaceMatch) {
+      const named = KNOWN_PLAYERS.find((p) => p.toLowerCase() === replaceMatch[1].toLowerCase());
+      next.player = named ?? capitalize(replaceMatch[1]);
+    }
+
+    // "I want a 2 second intro" -> resize the hook/intro clip specifically.
+    const introMatch = text.match(/intro of (\d+(?:\.\d+)?)\s*seconds?/) ?? text.match(/(\d+(?:\.\d+)?)\s*seconds?\s*intro/);
+    if (introMatch) {
+      const introLen = Number(introMatch[1]);
+      next.clips = next.clips.map((c) => {
+        if (c.type !== "intro" && c.purpose !== "hook") return c;
+        if (next.status === "ready") {
+          return { ...c, end: Number((c.start + introLen).toFixed(2)) };
+        }
+        return c; // Draft plan: no real timing to resize yet - the target length is honored once bound.
+      });
+      if (next.status === "ready") {
+        next.duration = Number(next.clips.reduce((s, c) => s + (c.end - c.start), 0).toFixed(2));
+      }
     }
 
     // --- Football chat heuristics ---
@@ -377,29 +384,13 @@ function structuredClonePlan(plan: EditPlan): EditPlan {
   };
 }
 
+function capitalize(name: string): string {
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
 function simulateLatency(minMs: number, maxMs: number): Promise<void> {
   const ms = minMs + Math.random() * (maxMs - minMs);
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Simple seeded PRNG (mulberry32) so mock output is stable across calls for the same seed. */
-function seededRandom(seed: number): () => number {
-  let a = seed;
-  return function () {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function hashString(value: string): number {
-  let h = 0;
-  for (let i = 0; i < value.length; i++) {
-    h = (Math.imul(31, h) + value.charCodeAt(i)) | 0;
-  }
-  return h >>> 0;
 }
 
 function generateKeyMoments(duration: number): KeyMoment[] {

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { bindDraftPlan } from "@/lib/ai/analyze";
+import { bindPlanToDemoAssets } from "@/lib/assets/demo";
+import { getAssetProvider } from "@/lib/assets/provider";
 import { buildEditSummary } from "@/lib/edit/summary";
 import { handleApiError, UserFacingError } from "@/lib/errors";
 import { getFile, getProject, updateProject } from "@/lib/storage/fileStore";
@@ -42,13 +44,10 @@ export async function POST(request: NextRequest) {
     }
 
     if (plan.status === "draft") {
-      if (project.clipFileIds.length === 0) {
-        throw new UserFacingError(
-          "This edit plan is ready, but it needs footage - upload at least one clip before rendering.",
-        );
-      }
-
-      const clipInfo = project.clipFileIds
+      // Real uploaded footage, if any - resolveAssets() below prefers this
+      // and only falls back to synthetic demo clips when it's empty, which
+      // is what lets the prompt-first workflow render without an upload.
+      const userClips = project.clipFileIds
         .map((id) => {
           const file = getFile(id);
           const meta = (project.clipsMeta as Record<string, { metadata?: VideoMetadata }> | undefined)?.[id];
@@ -57,15 +56,22 @@ export async function POST(request: NextRequest) {
         })
         .filter((c): c is { id: string; duration: number } => c !== null);
 
-      if (clipInfo.length === 0) {
-        throw new UserFacingError("Your uploaded clips could not be read. Please try uploading them again.");
+      let resolution;
+      try {
+        resolution = await getAssetProvider().resolveAssets(plan, { userClips });
+      } catch (err) {
+        console.error("[render] asset resolution failed", err);
+        throw new UserFacingError("We couldn't prepare footage for this edit. Please try again.");
       }
 
       try {
-        plan = await bindDraftPlan(plan, clipInfo);
+        plan =
+          resolution.mode === "user_upload"
+            ? await bindDraftPlan(plan, resolution.clips)
+            : bindPlanToDemoAssets(plan, resolution);
       } catch (err) {
-        console.error("[render] failed to bind draft plan to uploaded clips", err);
-        throw new UserFacingError("We couldn't match your uploaded clips to this edit plan. Please try again.");
+        console.error("[render] failed to bind plan to resolved assets", err);
+        throw new UserFacingError("We couldn't match footage to this edit plan. Please try again.");
       }
 
       const validation = validateEditPlan(plan);

@@ -1,24 +1,9 @@
-import type { ClipPurpose, EditPlan, EffectType } from "@/types/edit";
+import { PURPOSE_LABELS } from "@/lib/ai/football";
+import type { EditPlan, EffectType } from "@/types/edit";
 
 interface EditTimelineProps {
   plan: EditPlan;
 }
-
-const PURPOSE_LABELS: Record<ClipPurpose, string> = {
-  hook: "Hook",
-  dribble: "Dribble",
-  skill: "Skill",
-  goal: "Goal",
-  assist: "Assist",
-  celebration: "Celebration",
-  shot: "Shot",
-  tackle: "Tackle",
-  save: "Save",
-  sprint: "Sprint",
-  pass: "Pass",
-  reaction: "Reaction",
-  closeup: "Close-up",
-};
 
 const EFFECT_ICONS: Record<EffectType, string> = {
   velocity: "⚡",

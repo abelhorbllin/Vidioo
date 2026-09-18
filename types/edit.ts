@@ -54,6 +54,12 @@ export interface EditInstructions {
   player?: string;
   /** Parsed or explicit target duration in seconds (e.g. from "15 second edit" in the prompt). */
   targetDurationSeconds?: number;
+  /**
+   * Explicit narrative arc to use instead of parsing one from the prompt -
+   * used by "Create Similar Edit" (Trending) to reproduce a detected
+   * structure. When set, this replaces buildFootballArc()'s own arc.
+   */
+  sceneArcOverride?: ClipPurpose[];
 }
 
 /**
@@ -187,6 +193,13 @@ export interface EditPlan {
   /** Plain-language notes for requests the engine can't do yet (e.g. "motion blur", "beat sync"). Never silently dropped. */
   unsupportedRequests: string[];
   status: "draft" | "ready";
+  /**
+   * Where the bound footage came from, once "ready": "user" means the
+   * clips the user uploaded; "demo" means synthetic, ffmpeg-generated
+   * placeholder footage from DemoAssetProvider (see lib/assets/demo.ts) -
+   * never real football footage. Undefined while still "draft".
+   */
+  assetMode?: "user" | "demo";
 }
 
 export interface SourceClipRef {
@@ -206,4 +219,5 @@ export interface EditSummary {
   clipCount?: number;
   effectsCount?: number;
   unsupportedRequests?: string[];
+  assetMode?: "user" | "demo";
 }

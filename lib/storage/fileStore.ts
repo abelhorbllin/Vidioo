@@ -20,7 +20,7 @@ import path from "path";
  * opaque id and served through /api/files/[id].
  */
 
-export type StoredKind = "upload" | "thumbnail" | "render" | "export";
+export type StoredKind = "upload" | "thumbnail" | "render" | "export" | "demo";
 
 export interface StoredFile {
   id: string;
@@ -36,6 +36,8 @@ const DIRS: Record<StoredKind, string> = {
   thumbnail: path.join(DATA_ROOT, "tmp"),
   render: path.join(DATA_ROOT, "tmp"),
   export: path.join(DATA_ROOT, "exports"),
+  /** Synthetic, ffmpeg-generated placeholder clips used by DemoAssetProvider - see lib/assets/demo.ts. */
+  demo: path.join(DATA_ROOT, "demo"),
 };
 
 // Survive Next.js dev-server hot reloads by stashing state on globalThis.
@@ -118,6 +120,15 @@ export function createDraftProject(): ProjectState {
 
 export function getProject(id: string): ProjectState | undefined {
   return projects.get(id);
+}
+
+/** Lists all in-memory projects, newest first. There's no auth/multi-tenancy yet - see README limitations. */
+export function listProjects(): ProjectState[] {
+  return Array.from(projects.values()).sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export function deleteProject(id: string): boolean {
+  return projects.delete(id);
 }
 
 /** Appends an uploaded clip file to a project, setting it as the primary video if it's the first one. */

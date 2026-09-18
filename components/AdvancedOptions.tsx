@@ -1,14 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import type { AdvancedOptions as AdvancedOptionsType, AspectRatio, CaptionStyle, Intensity, MusicChoice } from "@/types/edit";
+import type { AdvancedOptions as AdvancedOptionsType, CaptionStyle, Intensity } from "@/types/edit";
 
 interface AdvancedOptionsProps {
   options: AdvancedOptionsType;
   onChange: (options: AdvancedOptionsType) => void;
 }
 
-const ASPECT_RATIOS: AspectRatio[] = ["9:16", "16:9", "1:1"];
 const CAPTION_STYLES: CaptionStyle[] = ["off", "basic", "dynamic"];
 const INTENSITIES: Intensity[] = ["low", "medium", "high"];
 
@@ -32,14 +31,6 @@ export function AdvancedOptions({ options, onChange }: AdvancedOptionsProps) {
 
       {open && (
         <div className="mt-5 flex flex-col gap-5">
-          <OptionGroup label="Aspect ratio">
-            <SegmentedControl
-              options={ASPECT_RATIOS}
-              value={options.aspectRatio}
-              onChange={(v) => set("aspectRatio", v)}
-            />
-          </OptionGroup>
-
           <OptionGroup label="Captions">
             <SegmentedControl
               options={CAPTION_STYLES}
@@ -55,15 +46,6 @@ export function AdvancedOptions({ options, onChange }: AdvancedOptionsProps) {
 
           <OptionGroup label="Auto zooms">
             <ToggleControl checked={options.autoZoom} onChange={(v) => set("autoZoom", v)} />
-          </OptionGroup>
-
-          <OptionGroup label="Music">
-            <SegmentedControl
-              options={["original", "add_later"] as MusicChoice[]}
-              value={options.music}
-              onChange={(v) => set("music", v)}
-              labels={{ original: "Original audio", add_later: "Add music later" }}
-            />
           </OptionGroup>
 
           <OptionGroup label="Intensity">

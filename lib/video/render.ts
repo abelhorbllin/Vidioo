@@ -552,7 +552,19 @@ export async function renderVideo(
     current = await addCaptions(current, mappedCues, plan.captionStyle === "dynamic" ? "dynamic" : "basic", dims);
   }
 
+  if (plan.music === "add_later") {
+    current = await muteAudio(current);
+  }
+
   return { file: current, cutCount: baseSegments.length, finalDuration };
+}
+
+/** Strips the audio track for real (a real ffmpeg pass, not just a UI label) - used when the plan's music mode is "no music". */
+export async function muteAudio(input: StoredFile): Promise<StoredFile> {
+  const output = await reserveOutputPath("render", ".mp4", "video/mp4");
+  const command = ffmpeg(input.absolutePath).videoCodec("copy").outputOptions(["-an"]).output(output.absolutePath);
+  await runFfmpeg(command);
+  return output;
 }
 
 /** Maps a set of clip-scoped or global effect ranges onto the post-cut timeline. A missing start/end covers the whole edit. */

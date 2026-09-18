@@ -228,6 +228,59 @@ export const FOOTBALL_PLAYER_SUGGESTIONS: string[] = [
   "Messi",
   "Ronaldo",
   "Yamal",
+  "Haaland",
   "Vinicius",
   "Bellingham",
+];
+
+export interface QuickstartPrompt {
+  label: string;
+  emoji: string;
+  prompt: string;
+  player?: string;
+  styleId?: EditingStyleId;
+}
+
+/**
+ * Full, ready-to-use example prompts shown on the Create screen - clicking
+ * one replaces the whole prompt (and pre-fills player/style), unlike
+ * PROMPT_SUGGESTIONS above which append a fragment to whatever's already
+ * typed.
+ */
+export const FOOTBALL_QUICKSTART_PROMPTS: QuickstartPrompt[] = [
+  {
+    label: "Fast Mbappé Edit",
+    emoji: "⚡",
+    prompt:
+      "A very fast TikTok edit of Mbappé, high energy, lots of velocity, quick zooms on his skills and a big effect on the goal.",
+    player: "Mbappé",
+    styleId: "fast-paced",
+  },
+  {
+    label: "Dark Ronaldo Edit",
+    emoji: "🌑",
+    prompt: "A dark, aggressive edit of Ronaldo with high contrast color grading, flashes, and shake on impact.",
+    player: "Ronaldo",
+    styleId: "dark",
+  },
+  {
+    label: "Emotional Messi Edit",
+    emoji: "❤️",
+    prompt: "An emotional edit of Messi's best moments, slow pacing, cinematic feel, dramatic celebration ending.",
+    player: "Messi",
+    styleId: "emotional",
+  },
+  {
+    label: "Aggressive Yamal Edit",
+    emoji: "🔥",
+    prompt: "An aggressive fast-cut edit of Yamal with strong shake, flashes, and velocity throughout.",
+    player: "Yamal",
+    styleId: "aggressive",
+  },
+  {
+    label: "Cinematic Football Edit",
+    emoji: "🎬",
+    prompt: "A cinematic football edit with a slow intro, smooth transitions, and a dramatic ending.",
+    styleId: "cinematic",
+  },
 ];

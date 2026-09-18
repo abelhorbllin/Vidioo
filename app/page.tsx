@@ -10,22 +10,22 @@ const HOW_IT_WORKS = [
   },
   {
     step: "02",
-    title: "Upload your clips",
-    description: "The AI plans the edit around your idea - you provide the footage. MP4, MOV, or WEBM.",
+    title: "AI plans the montage",
+    description: "The AI turns your prompt into a structured edit plan - hook, skill, goal, celebration.",
   },
   {
     step: "03",
-    title: "Get your edit",
-    description: "The pipeline cuts, effects, captions, and renders — then you preview and export.",
+    title: "Preview & export",
+    description: "Get a real rendered preview instantly - add your own clips any time to use them instead.",
   },
 ];
 
 const CAPABILITIES = [
-  { title: "Smart cutting", description: "Builds a hook → skill → goal → celebration arc from your clips." },
-  { title: "Silence removal", description: "Detects and removes dead air using real audio analysis." },
-  { title: "Auto captions", description: "Burns in readable captions, basic or bold and dynamic." },
+  { title: "Prompt-based editing", description: "No upload required - describe the edit and get a real result." },
+  { title: "AI edit plans", description: "Builds a hook → skill → goal → celebration arc from your idea." },
+  { title: "Football-specific styles", description: "Dark, Fast, Cinematic, Aggressive, Clean, Emotional." },
   { title: "Zoom, shake & flash", description: "Real crop-zoom, camera shake, and flash-hit effects on key moments." },
-  { title: "Aspect ratio", description: "Reframes your footage for 9:16, 16:9, or 1:1 in one click." },
+  { title: "Trending & remixes", description: "Discover trending edits, analyze their structure, remix with a new player." },
   { title: "Chat to refine", description: "\"Make the goal hit harder\" or \"add more velocity\" - in plain English." },
 ];
 
@@ -48,7 +48,8 @@ export default function LandingPage() {
           </span>
         </h1>
         <p className="mx-auto mt-6 max-w-xl text-lg text-zinc-400">
-          Describe your edit. Upload your clips. Let AI build it.
+          Describe the edit you want. AI plans the montage, selects the right moments and builds the final video -
+          no clips required to start.
         </p>
         <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
           <Link href="/app" className="btn-primary">
@@ -145,7 +146,7 @@ export default function LandingPage() {
       <section className="mx-auto max-w-5xl px-6 py-20">
         <h2 className="text-center text-3xl font-semibold text-white">Example workflow</h2>
         <div className="card mt-12 grid grid-cols-1 divide-y divide-white/5 sm:grid-cols-4 sm:divide-x sm:divide-y-0">
-          {["Describe the edit", "Upload your clips", "AI builds the plan", "Preview & export"].map(
+          {["Describe the edit", "AI builds the plan", "Add your clips (optional)", "Preview & export"].map(
             (label, i) => (
               <div key={label} className="flex flex-col items-center gap-2 p-6 text-center">
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent/20 text-sm font-semibold text-accent">
@@ -155,6 +156,27 @@ export default function LandingPage() {
               </div>
             ),
           )}
+        </div>
+      </section>
+
+      {/* Trending teaser */}
+      <section className="mx-auto max-w-5xl px-6 py-20">
+        <div className="card grid grid-cols-1 items-center gap-8 p-10 sm:grid-cols-2">
+          <div>
+            <h2 className="text-2xl font-semibold text-white">🔥 Discover trending football edits</h2>
+            <p className="mt-3 text-sm text-zinc-400">
+              Browse what&rsquo;s performing on TikTok, Reels, and Shorts, see the detected structure - hook, cuts,
+              zooms, beat drops - and create an original edit inspired by it with a different player.
+            </p>
+            <Link href="/trending" className="btn-secondary mt-6 inline-block">
+              Explore Trending
+            </Link>
+          </div>
+          <div className="rounded-xl bg-base-900 p-5 text-sm">
+            <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Detected structure</p>
+            <p className="mt-2 text-zinc-300">Hook → Dribble → Skill → Goal → Celebration</p>
+            <p className="mt-4 text-xs text-zinc-500">Never copies the video - only its pacing and style.</p>
+          </div>
         </div>
       </section>
 
@@ -170,7 +192,8 @@ export default function LandingPage() {
       </section>
 
       <footer className="border-t border-white/5 py-8 text-center text-xs text-zinc-600">
-        EditAI — MVP build. Demo AI mode is used unless a real AI provider is configured.
+        EditAI — MVP build. Uses Demo AI mode, Demo Asset Mode, and Demo Trending Data unless real providers are
+        configured - see the README.
       </footer>
     </div>
   );
