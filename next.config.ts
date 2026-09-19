@@ -10,7 +10,15 @@ const nextConfig: NextConfig = {
   },
   // These packages ship native binaries / dynamic requires that webpack
   // can't statically bundle - keep them as real Node.js requires at runtime.
-  serverExternalPackages: ["fluent-ffmpeg", "ffmpeg-static", "@ffprobe-installer/ffprobe"],
+  // @remotion/bundler and @remotion/renderer spawn a headless browser and
+  // read files off disk in ways webpack can't statically analyze either.
+  serverExternalPackages: [
+    "fluent-ffmpeg",
+    "ffmpeg-static",
+    "@ffprobe-installer/ffprobe",
+    "@remotion/bundler",
+    "@remotion/renderer",
+  ],
   eslint: {
     ignoreDuringBuilds: false,
   },

@@ -30,7 +30,8 @@ export interface StoredFile {
   createdAt: number;
 }
 
-const DATA_ROOT = path.join(process.cwd(), ".data");
+/** Exported so lib/video/remotion.ts can serve this same tree as its Remotion bundle's public dir. */
+export const DATA_ROOT = path.join(process.cwd(), ".data");
 const DIRS: Record<StoredKind, string> = {
   upload: path.join(DATA_ROOT, "uploads"),
   thumbnail: path.join(DATA_ROOT, "tmp"),

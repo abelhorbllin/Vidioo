@@ -6,7 +6,9 @@ import { buildEditSummary } from "@/lib/edit/summary";
 import { handleApiError, UserFacingError } from "@/lib/errors";
 import { getFile, getProject, updateProject } from "@/lib/storage/fileStore";
 import { validateEditPlan } from "@/lib/validation/editPlan";
-import { buildProjectSourceResolver, renderVideo } from "@/lib/video/render";
+import { getRenderEngine } from "@/lib/video/engine";
+import { buildProjectSourceResolver, renderVideo, type RenderResult } from "@/lib/video/render";
+import { renderWithRemotion } from "@/lib/video/remotion";
 import type { EditPlan } from "@/types/edit";
 import type { VideoMetadata } from "@/types/video";
 
@@ -84,12 +86,16 @@ export async function POST(request: NextRequest) {
     }
 
     const resolveSource = buildProjectSourceResolver(project);
+    const engine = getRenderEngine();
 
-    let result;
+    let result: RenderResult;
     try {
-      result = await renderVideo(plan, resolveSource, "preview");
+      result =
+        engine === "remotion"
+          ? await renderWithRemotion(plan, resolveSource, "preview")
+          : await renderVideo(plan, resolveSource, "preview");
     } catch (err) {
-      console.error("[render] ffmpeg pipeline failed", err);
+      console.error(`[render] ${engine} pipeline failed`, err);
       throw new UserFacingError(
         "We couldn't render a preview of this edit. Please try adjusting your options and try again.",
       );
