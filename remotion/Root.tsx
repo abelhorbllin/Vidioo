@@ -11,6 +11,8 @@ const DEFAULT_PROPS: MainVideoProps = {
   backgroundColor: "#0a0a0f",
   clips: [],
   captions: [],
+  effects: [],
+  tracking: [],
 };
 
 /**

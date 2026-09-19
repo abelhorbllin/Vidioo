@@ -96,6 +96,140 @@ export interface EffectInstruction {
   sourceClipId?: string;
 }
 
+/**
+ * The new, frame-based advanced effect system for the Remotion engine (see
+ * remotion/effects/). This is DELIBERATELY separate from EffectType /
+ * EffectInstruction above (the ffmpeg engine's shake/flash/velocity/
+ * colorGrade, timed in seconds) - different vocabulary, different timeline
+ * unit (frames, not seconds), different engine. Both are additive and
+ * coexist: the ffmpeg engine ignores EditPlan.videoEffects entirely, and the
+ * Remotion engine ignores EditPlan.effects entirely.
+ */
+export type VideoEffectType =
+  | "player_outline"
+  | "player_glow"
+  | "tracking_zoom"
+  | "lightning"
+  | "flash"
+  | "camera_shake"
+  | "speed_ramp"
+  | "freeze_frame"
+  | "motion_blur"
+  | "color_grade"
+  | "text_pop"
+  | "impact_effect";
+
+export interface BaseVideoEffect {
+  /** Frame (at the Remotion composition's fps) on the FINAL, post-cut/concatenated timeline where this effect starts. */
+  startFrame: number;
+  durationInFrames: number;
+}
+
+export interface PlayerOutlineEffect extends BaseVideoEffect {
+  type: "player_outline";
+  color: string;
+  thickness: number;
+}
+
+export interface PlayerGlowEffect extends BaseVideoEffect {
+  type: "player_glow";
+  /** 0-1 relative strength. */
+  intensity: number;
+  color?: string;
+}
+
+export interface TrackingZoomEffect extends BaseVideoEffect {
+  type: "tracking_zoom";
+  /** Peak scale factor reached mid-effect, e.g. 1.3 = 30% zoomed in. */
+  scale: number;
+}
+
+export interface LightningEffect extends BaseVideoEffect {
+  type: "lightning";
+  /** 0-1 relative strength. */
+  intensity?: number;
+  color?: string;
+}
+
+export interface FlashVideoEffect extends BaseVideoEffect {
+  type: "flash";
+  /** 0-1 relative strength (peak overlay opacity). */
+  intensity: number;
+  color?: string;
+}
+
+export interface CameraShakeEffect extends BaseVideoEffect {
+  type: "camera_shake";
+  /** 0-1 relative strength. */
+  intensity: number;
+}
+
+/** PLACEHOLDER - registered but not yet rendered for real. See remotion/effects/SpeedRamp.tsx. */
+export interface SpeedRampEffect extends BaseVideoEffect {
+  type: "speed_ramp";
+  fromSpeed?: number;
+  toSpeed?: number;
+}
+
+/** PLACEHOLDER - registered but not yet rendered for real. See remotion/effects/FreezeFrame.tsx. */
+export interface FreezeFrameEffect extends BaseVideoEffect {
+  type: "freeze_frame";
+}
+
+/** PLACEHOLDER - registered but not yet rendered for real. See remotion/effects/MotionBlur.tsx. */
+export interface MotionBlurEffect extends BaseVideoEffect {
+  type: "motion_blur";
+  intensity?: number;
+}
+
+/** PLACEHOLDER - registered but not yet rendered for real. See remotion/effects/ColorGrade.tsx. */
+export interface ColorGradeVideoEffect extends BaseVideoEffect {
+  type: "color_grade";
+  intensity?: number;
+}
+
+/** PLACEHOLDER - registered but not yet rendered for real. See remotion/effects/TextPop.tsx. */
+export interface TextPopEffect extends BaseVideoEffect {
+  type: "text_pop";
+  text: string;
+}
+
+/** PLACEHOLDER - registered but not yet rendered for real. See remotion/effects/ImpactEffect.tsx. */
+export interface ImpactEffect extends BaseVideoEffect {
+  type: "impact_effect";
+  intensity?: number;
+}
+
+export type VideoEffect =
+  | PlayerOutlineEffect
+  | PlayerGlowEffect
+  | TrackingZoomEffect
+  | LightningEffect
+  | FlashVideoEffect
+  | CameraShakeEffect
+  | SpeedRampEffect
+  | FreezeFrameEffect
+  | MotionBlurEffect
+  | ColorGradeVideoEffect
+  | TextPopEffect
+  | ImpactEffect;
+
+/**
+ * Mock (or, later, real) player-position samples consumed by tracking-aware
+ * videoEffects (player_outline, player_glow, tracking_zoom, lightning). `x`/
+ * `y` are the tracked box's CENTER as a 0-1 fraction of frame width/height;
+ * `width`/`height` are also 0-1 fractions. See remotion/effects/tracking.ts
+ * for how these are looked up (and interpolated) per frame. No real
+ * detection/tracking model is used yet - see project instructions.
+ */
+export interface TrackingPoint {
+  frame: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 /** A detected "interesting" moment in the source footage. */
 export interface KeyMoment {
   start: number;
@@ -200,6 +334,18 @@ export interface EditPlan {
    * never real football footage. Undefined while still "draft".
    */
   assetMode?: "user" | "demo";
+  /**
+   * Advanced, frame-based effects for the Remotion engine (see
+   * remotion/effects/ and lib/video/remotion.ts). Optional and additive -
+   * absent/empty means no advanced effects, exactly like before this field
+   * existed. The ffmpeg engine never reads this field.
+   */
+  videoEffects?: VideoEffect[];
+  /**
+   * Mock (or, later, real) player tracking samples for tracking-aware
+   * videoEffects. Optional/additive - see TrackingPoint.
+   */
+  tracking?: TrackingPoint[];
 }
 
 export interface SourceClipRef {

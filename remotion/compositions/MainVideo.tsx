@@ -1,5 +1,8 @@
 import React from "react";
 import { AbsoluteFill, OffthreadVideo, Sequence, useVideoConfig } from "remotion";
+import { effectRegistry, isTransformEffect } from "../effects/effectRegistry";
+import type { TrackingData } from "../effects/tracking";
+import type { VideoEffect } from "../effects/types";
 
 /**
  * A single video segment placed on the timeline. `src` is an absolute
@@ -35,27 +38,43 @@ export type MainVideoProps = {
   backgroundColor: string;
   clips: RemotionClip[];
   captions: RemotionCaption[];
+  /** Advanced effects (see remotion/effects/) - empty means none, exactly like before this field existed. */
+  effects: VideoEffect[];
+  /** Mock (or, later, real) player tracking samples for tracking-aware effects - see remotion/effects/tracking.ts. */
+  tracking: TrackingData;
 };
 
 /**
- * The one and only Remotion composition for this app. It is deliberately
- * dumb: it just lays out `clips` back to back (via <Sequence>) and overlays
- * `captions` at fixed positions. All editing intelligence (which clips, what
- * text, what timing) comes from the EditPlan -> RemotionInputProps
- * translation in lib/video/remotion.ts - nothing here reads the EditPlan
- * directly, and there is no user-facing timeline: this component only ever
- * runs headlessly inside renderMedia().
+ * The one and only Remotion composition for this app. Its own job stays
+ * dumb: lay out `clips` back to back (via <Sequence>) and overlay
+ * `captions`. All editing intelligence (which clips, what text, what
+ * effects) comes from the EditPlan -> MainVideoProps translation in
+ * lib/video/remotion.ts - nothing here reads the EditPlan directly, and
+ * there is no user-facing timeline: this component only ever runs
+ * headlessly inside renderMedia().
  *
- * Deliberately NOT implemented yet (see project instructions): player
- * tracking/cutout, glow/outline, flash/shake, speed ramps. Those stay on the
- * ffmpeg engine for now.
+ * `effects` are looked up in effectRegistry.ts by type and rendered
+ * automatically - this component has no per-effect-type logic. Two kinds
+ * (see effectRegistry.ts's isTransformEffect()):
+ *  - "transform" effects (camera_shake, tracking_zoom, ...) wrap the clips
+ *    layer with a per-frame CSS transform, applied in `effects` order.
+ *  - "overlay" effects (flash, player_outline, player_glow, lightning, ...)
+ *    render on top of everything, after captions.
+ * Captions are deliberately kept OUTSIDE the transform-wrapped clips layer
+ * so text stays static/readable even while the video shakes or zooms.
  */
-export const MainVideo: React.FC<MainVideoProps> = ({ backgroundColor, clips, captions }) => {
+export const MainVideo: React.FC<MainVideoProps> = ({
+  backgroundColor,
+  clips,
+  captions,
+  effects,
+  tracking,
+}) => {
   const { fps } = useVideoConfig();
   let cursor = 0;
 
-  return (
-    <AbsoluteFill style={{ backgroundColor }}>
+  const clipsLayer = (
+    <>
       {clips.map((clip, i) => {
         const from = cursor;
         cursor += clip.durationInFrames;
@@ -70,6 +89,25 @@ export const MainVideo: React.FC<MainVideoProps> = ({ backgroundColor, clips, ca
           </Sequence>
         );
       })}
+    </>
+  );
+
+  const transformedClipsLayer = effects
+    .filter((effect) => isTransformEffect(effect.type))
+    .reduce((children, effect) => {
+      const EffectComponent = effectRegistry[effect.type];
+      return (
+        <EffectComponent effect={effect} tracking={tracking}>
+          {children}
+        </EffectComponent>
+      );
+    }, clipsLayer);
+
+  const overlayEffects = effects.filter((effect) => !isTransformEffect(effect.type));
+
+  return (
+    <AbsoluteFill style={{ backgroundColor }}>
+      {transformedClipsLayer}
 
       {captions.map((caption, i) => (
         <Sequence key={`caption-${i}`} from={caption.startFrame} durationInFrames={caption.durationInFrames}>
@@ -92,6 +130,11 @@ export const MainVideo: React.FC<MainVideoProps> = ({ backgroundColor, clips, ca
           </AbsoluteFill>
         </Sequence>
       ))}
+
+      {overlayEffects.map((effect, i) => {
+        const EffectComponent = effectRegistry[effect.type];
+        return <EffectComponent key={i} effect={effect} tracking={tracking} />;
+      })}
     </AbsoluteFill>
   );
 };

@@ -6,7 +6,7 @@ import { DATA_ROOT, reserveOutputPath, type StoredFile } from "@/lib/storage/fil
 import { MAIN_COMPOSITION_ID } from "@/remotion/constants";
 import type { MainVideoProps, RemotionCaption, RemotionClip } from "@/remotion/compositions/MainVideo";
 import { getResolutionDimensions, type ResolutionLabel, type SourceResolver } from "@/lib/video/render";
-import type { CaptionCue, EditClip, EditPlan } from "@/types/edit";
+import type { CaptionCue, EditClip, EditPlan, TrackingPoint, VideoEffect } from "@/types/edit";
 
 /**
  * Remotion render engine - a second, coexisting way to turn an EditPlan into
@@ -27,10 +27,14 @@ import type { CaptionCue, EditClip, EditPlan } from "@/types/edit";
  * pure functions below, and handed to a headless Remotion composition
  * (remotion/compositions/MainVideo.tsx) that only Node ever renders.
  *
+ * Advanced effects (player outline/glow, tracking zoom, lightning, camera
+ * shake, flash, ...) come from the separate, frame-based EditPlan.videoEffects
+ * field and are rendered by remotion/effects/ (see effectRegistry.ts) - not
+ * to be confused with EditPlan.effects (the older, second-based ffmpeg
+ * engine's shake/flash/velocity/colorGrade), which this engine ignores.
+ *
  * Deliberately NOT ported to this engine yet (still ffmpeg-only, see
- * render.ts): silence removal, speed changes, zoom, shake, flash, color
- * grade. This first step only proves EditPlan -> Remotion -> MP4 works for
- * cuts + burned-in captions.
+ * render.ts): silence removal, speed changes.
  */
 
 const FPS = 30;
@@ -147,6 +151,23 @@ function buildCaptions(plan: EditPlan, timeline: FrameSegment[]): RemotionCaptio
     .filter((c): c is RemotionCaption => c !== null);
 }
 
+/**
+ * EditPlan.videoEffects are already frame-based on the FINAL composition
+ * timeline (see types/edit.ts's BaseVideoEffect) - no time-mapping needed,
+ * just a defensive clamp so a mis-authored effect can't run past the end of
+ * the video (the composition's own duration is the hard boundary).
+ */
+function buildVideoEffects(plan: EditPlan, durationInFrames: number): VideoEffect[] {
+  if (!plan.videoEffects || plan.videoEffects.length === 0) return [];
+
+  return plan.videoEffects.map((effect) => {
+    const startFrame = Math.max(0, Math.min(effect.startFrame, durationInFrames - 1));
+    const maxDuration = durationInFrames - startFrame;
+    const clampedDuration = Math.max(1, Math.min(effect.durationInFrames, maxDuration));
+    return { ...effect, startFrame, durationInFrames: clampedDuration };
+  });
+}
+
 /** Translates a "ready" EditPlan into the plain, serializable props MainVideo.tsx renders. */
 export function buildRemotionInputProps(
   plan: EditPlan,
@@ -177,6 +198,8 @@ export function buildRemotionInputProps(
     backgroundColor: "#000000",
     clips,
     captions: buildCaptions(plan, timeline),
+    effects: buildVideoEffects(plan, Math.max(1, durationInFrames)),
+    tracking: (plan.tracking ?? []) as TrackingPoint[],
   };
 }
 
